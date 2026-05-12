@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { useSearchParams }     from "react-router-dom";
-import { useRunbook }          from "../hooks/useRunbook";
-import StatusBar               from "../components/StatusBar";
-import ProgressBar             from "../components/ProgressBar";
-import RunbookSection          from "../components/RunbookSection";
-import ChecklistItem           from "../components/ChecklistItem";
-import { apiRequest }          from "../api/apiClient";
+import { useSearchParams } from "react-router-dom";
+import { useRunbook } from "../hooks/useRunbook";
+import StatusBar from "../components/StatusBar";
+import ProgressBar from "../components/ProgressBar";
+import RunbookSection from "../components/RunbookSection";
+import ChecklistItem from "../components/ChecklistItem";
+import { apiRequest } from "../api/apiClient";
 
 
 // ─────────────────────────────────────────────
@@ -17,7 +17,7 @@ function CreateRunbookModal({ issueKey, onClose, onSuccess }) {
     escalation_team: "", owner: "", estimated_resolution_time: "",
     ci_asset: "", symptoms: "", resolution_steps: "",
   });
-  const [saving,  setSaving]  = useState(false);
+  const [saving, setSaving] = useState(false);
   const [formMsg, setFormMsg] = useState(null);
 
   function handleChange(e) {
@@ -62,7 +62,7 @@ function CreateRunbookModal({ issueKey, onClose, onSuccess }) {
               <label className={labelCls} htmlFor="category">Category *</label>
               <select className={inputCls} id="category" value={form.category} onChange={handleChange}>
                 <option value="">Select category</option>
-                {["Application","Database","Deployment","Network","Performance","Storage","Other"].map(c => <option key={c}>{c}</option>)}
+                {["Application", "Database", "Deployment", "Network", "Performance", "Storage", "Other"].map(c => <option key={c}>{c}</option>)}
               </select>
             </div>
           </div>
@@ -71,7 +71,7 @@ function CreateRunbookModal({ issueKey, onClose, onSuccess }) {
               <label className={labelCls} htmlFor="severity">Severity *</label>
               <select className={inputCls} id="severity" value={form.severity} onChange={handleChange}>
                 <option value="">Select severity</option>
-                {["P1","P2","P3","P4"].map(s => <option key={s}>{s}</option>)}
+                {["P1", "P2", "P3", "P4"].map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div><label className={labelCls} htmlFor="keywords">Keywords</label><input className={inputCls} id="keywords" value={form.keywords} onChange={handleChange} placeholder="vpn, auth, network" /></div>
@@ -216,7 +216,7 @@ function RunbookInfoPanel({ data }) {
 // ─────────────────────────────────────────────
 export default function Runbooks() {
   const [searchParams] = useSearchParams();
-  const issueKey       = searchParams.get("id") || "UNKNOWN";
+  const issueKey = searchParams.get("id") || "UNKNOWN";
 
   const {
     status, data, loading, error,
@@ -224,9 +224,9 @@ export default function Runbooks() {
     fetchRunbook, completeTicket, escalateTicket,
   } = useRunbook(issueKey);
 
-  const [resolved,          setResolved]         = useState(null);
-  const [showRunbookModal,  setShowRunbookModal]  = useState(false);
-  const [completedBanner,   setCompletedBanner]   = useState(false);
+  const [resolved, setResolved] = useState(null);
+  const [showRunbookModal, setShowRunbookModal] = useState(false);
+  const [completedBanner, setCompletedBanner] = useState(false);
   const [escalationDisplay, setEscalationDisplay] = useState(null);
   const [savedRunbookTitle, setSavedRunbookTitle] = useState(null);
 
@@ -250,19 +250,19 @@ export default function Runbooks() {
   }, [issueKey]);
 
   const isAiFallback = data?.match_type === "ai_fallback";
-  const paired       = data?.paired_steps || [];
-  const progress     = getProgress(paired.length);
-  const isCompleted  = data?.ticket_status === "Completed";
+  const paired = data?.paired_steps || [];
+  const progress = getProgress(paired.length);
+  const isCompleted = data?.ticket_status === "Completed";
 
   // ✅ read-only when completed OR previously escalated
-  const isReadOnly   = isCompleted || !!priorEscalation;
+  const isReadOnly = isCompleted || !!priorEscalation;
 
   function getEscalationDisplay(escalateRes) {
     if (isAiFallback) {
       return escalateRes?.channel || escalateRes?.team || escalateRes?.escalation_team || "No Channel";
     }
     const category = data?.runbook_category ?? data?.team ?? "No Channel";
-    const team     = data?.runbook_escalation_team || data?.team || "";
+    const team = data?.runbook_escalation_team || data?.team || "";
     return team ? `${category} (${team})` : category;
   }
 
@@ -306,8 +306,8 @@ export default function Runbooks() {
               completedBanner || isCompleted
                 ? { color: "#4ade80", background: "rgba(74,222,128,.15)", border: "1px solid rgba(74,222,128,.2)" }
                 : priorEscalation
-                ? { color: "#f87171", background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.2)" }
-                : { color: "#facc15", background: "rgba(168,85,247,.25)", border: "1px solid rgba(168,85,247,.15)" }
+                  ? { color: "#f87171", background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.2)" }
+                  : { color: "#facc15", background: "rgba(168,85,247,.25)", border: "1px solid rgba(168,85,247,.15)" }
             }
           >
             {issueKey}
@@ -374,7 +374,7 @@ export default function Runbooks() {
       )}
 
       {/* AI FALLBACK BANNER or RUNBOOK INFO PANEL */}
-      {data && isAiFallback  && <AiFallbackBanner />}
+      {data && isAiFallback && <AiFallbackBanner />}
       {data && !isAiFallback && <RunbookInfoPanel data={data} />}
 
       {/* STATUS BAR — hide for read-only or AI fallback */}
@@ -449,9 +449,30 @@ export default function Runbooks() {
                           : <span className="font-mono text-[0.55rem] text-muted">{i + 1}</span>
                         }
                       </div>
-                      <span className="text-sm leading-relaxed text-muted flex-1">
-                        {typeof item === "string" ? item : (item.label || item.step || item.command || JSON.stringify(item))}
-                      </span>
+                      <div className="flex-1 flex flex-col gap-2">
+
+                        {/* STEP */}
+                        <div className="text-sm leading-relaxed text-slate-300">
+                          {typeof item === "string"
+                            ? item
+                            : (item.label || item.step || item.title || "No step")}
+                        </div>
+
+                        {/* COMMAND */}
+                        {/* COMMAND */}
+                        {typeof item !== "string" && (item.command || item.cmd) && (
+                          <div
+                            className="font-mono text-[0.72rem] px-3 py-2 rounded-lg overflow-x-auto"
+                            style={{
+                              background: "rgba(0,0,0,0.35)",
+                              border: "1px solid rgba(168,85,247,.12)",
+                              color: "#c084fc"
+                            }}
+                          >
+                            {item.command || item.cmd}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <ChecklistItem
