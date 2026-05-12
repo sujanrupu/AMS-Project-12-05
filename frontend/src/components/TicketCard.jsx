@@ -29,7 +29,7 @@ export default function TicketCard({ ticket: t, idx = 0, onDeleteOptions, onOpen
         <div className={`px-4 py-2 border-b border-purple/10 ${esc ? "bg-blue-900/10" : "bg-surface2"}`}>
           {esc ? (
             <span className="font-mono text-[0.65rem] text-white/90 bg-blue-700/30 px-2 py-0.5 rounded-full">
-              🚀 Escalated to ({esc})
+              🚀 Escalated to {esc}
             </span>
           ) : (
             <span className="font-mono text-[0.65rem] text-yellow bg-yellow/10 px-2 py-0.5 rounded-full">
@@ -73,8 +73,8 @@ export default function TicketCard({ ticket: t, idx = 0, onDeleteOptions, onOpen
         )}
       </div>
 
-      {/* ACTIONS */}
-      <div className="px-4 py-3 border-t border-purple/10 flex items-center gap-2">
+      {/* ACTIONS — row 1: main actions */}
+      <div className="px-4 pt-3 pb-2 border-t border-purple/10 flex items-center gap-2">
         <button
           onClick={() => window.open(`/runbooks?id=${t.issue_key}`, "_blank")}
           className="flex-1 bg-purple/15 hover:bg-purple/25 border border-purple/20 text-purple text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all duration-200 hover:scale-[1.02]"
@@ -89,17 +89,28 @@ export default function TicketCard({ ticket: t, idx = 0, onDeleteOptions, onOpen
         </button>
         <button
           onClick={() => onOpenMerge(t.issue_key)}
-          className="flex-1 bg-yellow/10 hover:bg-yellow/20 border border-yellow/20 text-yellow text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all"
+          className="flex-1 bg-yellow/10 hover:bg-yellow/20 border border-yellow/20 text-yellow text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all duration-200 hover:scale-[1.02]"
         >
           🔀 Merge
         </button>
+      </div>
+
+      {/* ACTIONS — row 2: secondary actions */}
+      <div className="px-4 pb-3 flex items-center gap-2">
         <button
-          onClick={() => onDeleteOptions(t.issue_key)}  
+          onClick={() => window.open(`${import.meta.env.VITE_JIRA_BASE_URL}/browse/${t.issue_key}`, "_blank")}
+          className="flex-1 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all duration-200 hover:scale-[1.02]"
+        >
+          🔗 Open in Jira
+        </button>
+        <button
+          onClick={() => onDeleteOptions(t.issue_key)}
           className="bg-red/10 hover:bg-red/20 border border-red/20 text-red text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all duration-200 hover:scale-[1.02]"
         >
           🗑
         </button>
       </div>
+
     </div>
   );
 }

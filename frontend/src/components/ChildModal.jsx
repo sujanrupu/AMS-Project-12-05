@@ -60,6 +60,12 @@ export default function ChildModal({ parentKey, children, onClose, onDetach, onD
                 {/* Actions — matches doc 23: both detach + delete */}
                 <div className="flex justify-end gap-2 pt-1">
                   <button
+                    onClick={() => window.open(`${import.meta.env.VITE_JIRA_BASE_URL}/browse/${c.issue_key}`, "_blank")}
+                    className="bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 text-[0.65rem] font-bold py-1.5 px-3 rounded-lg font-mono transition-all"
+                  >
+                    🔗 Open in Jira
+                  </button>
+                  <button
                     onClick={() => onDetach(c.issue_key)}
                     className="bg-green/10 hover:bg-green/20 border border-green/20 text-green text-[0.65rem] font-bold py-1.5 px-3 rounded-lg font-mono transition-all"
                   >

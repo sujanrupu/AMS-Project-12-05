@@ -230,6 +230,9 @@ export default function Runbooks() {
   const [escalationDisplay, setEscalationDisplay] = useState(null);
   const [savedRunbookTitle, setSavedRunbookTitle] = useState(null);
 
+  // ✅ read prior escalation from localStorage on load
+  const [priorEscalation, setPriorEscalation] = useState(null);
+
   useEffect(() => { fetchRunbook(); }, [fetchRunbook]);
 
   useEffect(() => {
@@ -238,10 +241,21 @@ export default function Runbooks() {
     }
   }, [issueKey]);
 
+  // ✅ load escalation from localStorage once issueKey is known
+  useEffect(() => {
+    if (issueKey && issueKey !== "UNKNOWN") {
+      const stored = localStorage.getItem(`esc_${issueKey}`);
+      if (stored) setPriorEscalation(stored);
+    }
+  }, [issueKey]);
+
   const isAiFallback = data?.match_type === "ai_fallback";
   const paired       = data?.paired_steps || [];
   const progress     = getProgress(paired.length);
   const isCompleted  = data?.ticket_status === "Completed";
+
+  // ✅ read-only when completed OR previously escalated
+  const isReadOnly   = isCompleted || !!priorEscalation;
 
   function getEscalationDisplay(escalateRes) {
     if (isAiFallback) {
@@ -264,7 +278,8 @@ export default function Runbooks() {
     } else {
       const escalateRes = await escalateTicket();
       if (escalateRes && !escalateRes.error) {
-        localStorage.setItem(`esc_${issueKey}`, escalateRes.channel || escalateRes.team || "");
+        const channel = escalateRes.channel || escalateRes.team || "";
+        localStorage.setItem(`esc_${issueKey}`, channel);
       }
       setEscalationDisplay(getEscalationDisplay(escalateRes));
     }
@@ -287,12 +302,17 @@ export default function Runbooks() {
           <h1 className="text-2xl font-extrabold text-purple tracking-tight">⚙ Runbook Execution</h1>
           <span
             className="font-mono inline-block mt-1 text-xs px-3 py-0.5 rounded-full border"
-            style={completedBanner || isCompleted
-              ? { color: "#4ade80", background: "rgba(74,222,128,.15)", border: "1px solid rgba(74,222,128,.2)" }
-              : { color: "#facc15", background: "rgba(168,85,247,.25)", border: "1px solid rgba(168,85,247,.15)" }
+            style={
+              completedBanner || isCompleted
+                ? { color: "#4ade80", background: "rgba(74,222,128,.15)", border: "1px solid rgba(74,222,128,.2)" }
+                : priorEscalation
+                ? { color: "#f87171", background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.2)" }
+                : { color: "#facc15", background: "rgba(168,85,247,.25)", border: "1px solid rgba(168,85,247,.15)" }
             }
           >
-            {issueKey}{(completedBanner || isCompleted) && " · Completed"}
+            {issueKey}
+            {(completedBanner || isCompleted) && " · Completed"}
+            {priorEscalation && !isCompleted && " · Escalated"}
           </span>
         </div>
       </div>
@@ -309,12 +329,39 @@ export default function Runbooks() {
           >
             ✅
           </div>
-          <div>
+          <div className="flex-1">
             <p className="font-bold text-green text-sm">This ticket is already resolved</p>
             <p className="font-mono text-[0.72rem] text-muted mt-0.5">
               Steps shown below are for reference only.
             </p>
           </div>
+          <span className="font-mono text-[0.65rem] text-green border border-green/20 bg-green/5 px-2.5 py-1 rounded-full flex-shrink-0">
+            Read-only
+          </span>
+        </div>
+      )}
+
+      {/* ALREADY ESCALATED BANNER */}
+      {priorEscalation && !isCompleted && (
+        <div
+          className="flex items-center gap-4 border rounded-2xl px-5 py-4 mb-6 animate-slideUp"
+          style={{ background: "rgba(248,113,113,.05)", borderColor: "rgba(248,113,113,.2)" }}
+        >
+          <div
+            className="w-9 h-9 flex-shrink-0 flex items-center justify-center rounded-xl text-lg"
+            style={{ background: "rgba(248,113,113,.1)", border: "1px solid rgba(248,113,113,.25)" }}
+          >
+            ⚠️
+          </div>
+          <div className="flex-1">
+            <p className="font-bold text-red text-sm">This ticket has been escalated</p>
+            <p className="font-mono text-[0.72rem] text-muted mt-0.5">
+              Escalated to: <strong className="text-slate-300">{priorEscalation}</strong>. Steps shown below for reference only.
+            </p>
+          </div>
+          <span className="font-mono text-[0.65rem] text-red border border-red/20 bg-red/5 px-2.5 py-1 rounded-full flex-shrink-0">
+            Escalated
+          </span>
         </div>
       )}
 
@@ -330,13 +377,13 @@ export default function Runbooks() {
       {data && isAiFallback  && <AiFallbackBanner />}
       {data && !isAiFallback && <RunbookInfoPanel data={data} />}
 
-      {/* STATUS BAR — hide for completed or AI fallback */}
-      {!isAiFallback && !isCompleted && (
+      {/* STATUS BAR — hide for read-only or AI fallback */}
+      {!isAiFallback && !isReadOnly && (
         <StatusBar state={status.state} text={status.text} time={status.time} />
       )}
 
-      {/* PROGRESS BAR — hide for completed tickets */}
-      {!isCompleted && <ProgressBar pct={progress} />}
+      {/* PROGRESS BAR — hide for read-only tickets */}
+      {!isReadOnly && <ProgressBar pct={progress} />}
 
       {/* SKELETON */}
       {loading && (
@@ -366,7 +413,8 @@ export default function Runbooks() {
               count={`${paired.length} items`}
               delay={0.05}
               rightSlot={
-                !isCompleted && (
+                // hide select all for read-only tickets
+                !isReadOnly && (
                   <button
                     onClick={() => selectAll(paired)}
                     className="font-mono text-[0.7rem] text-purple bg-purple/10 border border-purple/20 rounded-md px-3 py-1 cursor-pointer hover:bg-purple/20 transition-all"
@@ -378,16 +426,28 @@ export default function Runbooks() {
             >
               <div className="flex flex-col gap-2">
                 {paired.map((item, i) => (
-                  isCompleted ? (
+                  isReadOnly ? (
+                    // ✅ completed → green checkmark | escalated → numbered, no checkbox
                     <div
                       key={i}
-                      className="flex items-start gap-3 px-4 py-3 bg-surface2 border border-green/10 rounded-xl"
+                      className="flex items-start gap-3 px-4 py-3 bg-surface2 rounded-xl"
+                      style={{
+                        border: isCompleted
+                          ? "1px solid rgba(74,222,128,.1)"
+                          : "1px solid transparent"
+                      }}
                     >
                       <div
                         className="w-[18px] h-[18px] min-w-[18px] rounded-md flex items-center justify-center mt-0.5 flex-shrink-0"
-                        style={{ background: "rgba(74,222,128,.15)", border: "1px solid rgba(74,222,128,.3)" }}
+                        style={isCompleted
+                          ? { background: "rgba(74,222,128,.15)", border: "1px solid rgba(74,222,128,.3)" }
+                          : { background: "rgba(100,116,139,.1)", border: "1px solid rgba(100,116,139,.2)", borderRadius: "50%" }
+                        }
                       >
-                        <span style={{ color: "#4ade80", fontSize: "11px", fontWeight: 900 }}>✓</span>
+                        {isCompleted
+                          ? <span style={{ color: "#4ade80", fontSize: "11px", fontWeight: 900 }}>✓</span>
+                          : <span className="font-mono text-[0.55rem] text-muted">{i + 1}</span>
+                        }
                       </div>
                       <span className="text-sm leading-relaxed text-muted flex-1">
                         {typeof item === "string" ? item : (item.label || item.step || item.command || JSON.stringify(item))}
@@ -412,8 +472,8 @@ export default function Runbooks() {
             </div>
           )}
 
-          {/* RESOLUTION PROMPT — hide for completed tickets */}
-          {!isCompleted && progress === 100 && resolved === null && (
+          {/* RESOLUTION PROMPT — hide for read-only tickets */}
+          {!isReadOnly && progress === 100 && resolved === null && (
             <ResolutionPrompt isAiFallback={isAiFallback} onResolved={handleResolved} />
           )}
 
@@ -426,7 +486,7 @@ export default function Runbooks() {
             </div>
           )}
 
-          {/* NO — escalated */}
+          {/* NO — escalated in current session */}
           {resolved === false && (
             <div className="bg-surface border border-purple/15 rounded-2xl p-6 text-center mt-4 animate-slideUp">
               <p className="font-bold text-red text-sm mb-2">⚠ Issue Not Resolved</p>

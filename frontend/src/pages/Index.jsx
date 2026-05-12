@@ -1,4 +1,4 @@
-import { useState} from "react";
+import { useState, useEffect} from "react";
 import { apiRequest } from "../api/apiClient";
 
 // ─────────────────────────────────────────────
@@ -109,12 +109,78 @@ function SubmitTab() {
 // ─────────────────────────────────────────────
 function StepLoader({ parentKey }) {
   const steps = [
-    { icon: "🔍", label: "Fetching ticket details",      sub: "Querying issue registry & metadata" },
-    { icon: "👶", label: "Child & parent detection",     sub: "Mapping parent-child relationships & hierarchy" },
-    { icon: "🔄", label: "Duplicate detection",          sub: "Cross-checking for duplicate & linked issues" },
-    { icon: "📖", label: "Runbook lookup & generation",  sub: "Fetching & compiling resolution runbooks" },
-    { icon: "📦", label: "Preparing dashboard view",     sub: "Finalizing all data for render" },
+    { icon: "🔍", label: "Fetching ticket details",     sub: "Querying issue registry & metadata" },
+    { icon: "👶", label: "Child & parent detection",    sub: "Mapping parent-child relationships & hierarchy" },
+    { icon: "🔄", label: "Duplicate detection",         sub: "Cross-checking for duplicate & linked issues" },
+    { icon: "📖", label: "Runbook lookup & generation", sub: "Fetching & compiling resolution runbooks" },
+    { icon: "📦", label: "Preparing dashboard view",    sub: "Finalizing all data for render" },
   ];
+
+  const [stepStates, setStepStates] = useState(
+    steps.map((_, i) => (i === 0 ? "active" : "pending"))
+  );
+  const [barWidth,   setBarWidth]   = useState(0);
+  const [phase,      setPhase]      = useState(1);
+  const [complete,   setComplete]   = useState(false);
+
+  const STEP_MS = 1000;
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function animate() {
+      for (let i = 0; i < steps.length; i++) {
+        if (cancelled) return;
+
+        setStepStates(prev => prev.map((s, idx) => idx === i ? "active" : s));
+        setBarWidth(Math.round(((i + 0.5) / steps.length) * 100));
+        setPhase(i + 1);
+
+        await new Promise(r => setTimeout(r, STEP_MS));
+        if (cancelled) return;
+
+        setStepStates(prev => prev.map((s, idx) => {
+          if (idx === i)     return "done";
+          if (idx === i + 1) return "active";
+          return s;
+        }));
+        setBarWidth(Math.round(((i + 1) / steps.length) * 100));
+      }
+
+      if (!cancelled) setComplete(true);
+    }
+
+    animate();
+    return () => { cancelled = true; };
+  }, []);
+
+  const dotStyle = (state) => ({
+    width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
+    transition: "all 0.35s ease",
+    background:   state === "done"   ? "#a855f7" : "transparent",
+    border:       state === "done"   ? "1.5px solid #a855f7"
+                : state === "active" ? "1.5px solid #a855f7"
+                :                     "1.5px solid #2d2d3e",
+    boxShadow:    state === "done"   ? "0 0 8px #a855f750"   : "none",
+    animation:    state === "active" ? "loaderGlow 1.2s ease-in-out infinite" : "none",
+  });
+
+  const connStyle = (i) => ({
+    width: 1.5, height: 16,
+    margin: "2px 0 2px 4.25px",
+    transition: "background 0.4s ease",
+    background: stepStates[i] === "done"
+      ? "linear-gradient(to bottom, #a855f7 0%, #2d2d3e 100%)"
+      : "#1e1b2e",
+  });
+
+  const labelColor = (state) =>
+    state === "done"   ? "#cbd5e1" :
+    state === "active" ? "#f8fafc" : "#374151";
+
+  const subColor = (state) =>
+    state === "done"   ? "#4b5563" :
+    state === "active" ? "#94a3b8" : "#1f2937";
 
   return (
     <div style={{
@@ -125,6 +191,7 @@ function StepLoader({ parentKey }) {
       fontFamily: "'JetBrains Mono', monospace",
       boxShadow: "0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)",
     }}>
+
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -132,7 +199,7 @@ function StepLoader({ parentKey }) {
             width: 28, height: 28, borderRadius: "50%",
             border: "2px solid rgba(168,85,247,0.25)",
             borderTopColor: "#a855f7",
-            animation: "spin 0.85s linear infinite",
+            animation: "loaderSpin 0.85s linear infinite",
             flexShrink: 0,
           }} />
           <div>
@@ -147,47 +214,68 @@ function StepLoader({ parentKey }) {
         <span style={{
           fontSize: "0.55rem", letterSpacing: "0.06em", textTransform: "uppercase",
           padding: "1px 6px", borderRadius: 20,
-          border: "1px solid rgba(168,85,247,0.2)",
-          color: "#7c3aed", background: "rgba(168,85,247,0.06)",
-        }}>Running</span>
+          border: complete ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(168,85,247,0.2)",
+          color:      complete ? "#22c55e" : "#7c3aed",
+          background: complete ? "rgba(34,197,94,0.06)" : "rgba(168,85,247,0.06)",
+        }}>
+          {complete ? "Complete" : "Running"}
+        </span>
       </div>
 
       {/* Progress bar */}
       <div style={{ height: 2, background: "#1a1730", borderRadius: 4, marginBottom: 20, overflow: "hidden" }}>
         <div style={{
-          height: "100%", width: "60%",
+          height: "100%",
+          width: `${barWidth}%`,
           background: "linear-gradient(90deg, #6d28d9, #a855f7, #c084fc)",
-          borderRadius: 4, boxShadow: "0 0 8px #a855f760",
-          animation: "loaderBarAnim 2s ease-in-out infinite alternate",
+          borderRadius: 4,
+          transition: "width 0.55s cubic-bezier(0.4,0,0.2,1)",
+          boxShadow: "0 0 8px #a855f760",
         }} />
       </div>
 
       {/* Steps */}
       <div style={{ display: "flex", flexDirection: "column" }}>
-        {steps.map((s, i) => (
-          <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10, marginBottom: i < steps.length - 1 ? 2 : 0 }}>
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 3 }}>
-              <div style={{
-                width: 10, height: 10, borderRadius: "50%",
-                border: "1.5px solid rgba(168,85,247,0.4)",
-                background: "transparent", flexShrink: 0,
-                animation: "loaderGlow 1.2s ease-in-out infinite",
-              }} />
-              {i < steps.length - 1 && (
-                <div style={{ width: 1.5, height: 16, background: "#1e1b2e", margin: "2px 0 2px 4.25px" }} />
-              )}
-            </div>
-            <div style={{ minHeight: i < steps.length - 1 ? 34 : 18, paddingBottom: i < steps.length - 1 ? 2 : 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 5, lineHeight: 1 }}>
-                <span style={{ fontSize: "0.7rem" }}>{s.icon}</span>
-                <span style={{ fontSize: "0.68rem", color: "#94a3b8", letterSpacing: "0.025em" }}>{s.label}</span>
+        {steps.map((s, i) => {
+          const state = stepStates[i];
+          return (
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 3 }}>
+                <div style={dotStyle(state)} />
+                {i < steps.length - 1 && <div style={connStyle(i)} />}
               </div>
-              <div style={{ fontSize: "0.58rem", color: "#4b5563", marginTop: 2, paddingLeft: 21, letterSpacing: "0.02em" }}>
-                {s.sub}
+              <div style={{ minHeight: i < steps.length - 1 ? 34 : 18, paddingBottom: i < steps.length - 1 ? 2 : 0 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 5, lineHeight: 1 }}>
+                  <span style={{
+                    fontSize: "0.7rem",
+                    animation: state === "active" ? "loaderPulseIcon 1s ease-in-out infinite" : "none",
+                  }}>{s.icon}</span>
+                  <span style={{
+                    fontSize: "0.68rem",
+                    fontWeight: state === "active" ? 700 : 400,
+                    color: labelColor(state),
+                    letterSpacing: "0.025em",
+                    transition: "color 0.3s ease",
+                  }}>
+                    {s.label}
+                  </span>
+                  {state === "done" && (
+                    <span style={{ color: "#a855f7", fontSize: "0.6rem", marginLeft: 4 }}>✔</span>
+                  )}
+                </div>
+                <div style={{
+                  fontSize: "0.58rem",
+                  color: subColor(state),
+                  marginTop: 2, paddingLeft: 21,
+                  letterSpacing: "0.02em",
+                  transition: "color 0.3s ease",
+                }}>
+                  {s.sub}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Footer */}
@@ -196,14 +284,15 @@ function StepLoader({ parentKey }) {
           ● Ticket intelligence · Est. ~{steps.length}s
         </span>
         <span style={{ fontSize: "0.56rem", color: "#4b5563", letterSpacing: "0.04em" }}>
-          Analysing...
+          Phase {phase} / {steps.length}
         </span>
       </div>
 
       <style>{`
-        @keyframes loaderGlow { 0%,100%{box-shadow:0 0 6px #a855f760} 50%{box-shadow:0 0 14px #a855f7b0} }
-        @keyframes loaderBarAnim { from{width:20%} to{width:90%} }
-        @keyframes spin { to{transform:rotate(360deg)} }
+        @keyframes loaderSpin      { to { transform: rotate(360deg); } }
+        @keyframes loaderGlow      { 0%,100%{ box-shadow:0 0 6px #a855f760 } 50%{ box-shadow:0 0 14px #a855f7b0 } }
+        @keyframes loaderPulseIcon { 0%,100%{ opacity:1; transform:scale(1) } 50%{ opacity:0.55; transform:scale(0.82) } }
+        @keyframes loaderFadeIn    { from{ opacity:0; transform:translateY(5px) } to{ opacity:1; transform:translateY(0) } }
       `}</style>
     </div>
   );
@@ -211,13 +300,13 @@ function StepLoader({ parentKey }) {
 
 
 // ─────────────────────────────────────────────
-// SEARCH TAB — matches ticket-search.js exactly
+// SEARCH TAB
 // ─────────────────────────────────────────────
 function SearchTab() {
-  const [query,   setQuery]   = useState("");
-  const [loading, setLoading] = useState(false);
-  const [result,  setResult]  = useState(null);
-  const [error,   setError]   = useState(null);
+  const [query,     setQuery]     = useState("");
+  const [loading,   setLoading]   = useState(false);
+  const [result,    setResult]    = useState(null);
+  const [error,     setError]     = useState(null);
   const [parentKey, setParentKey] = useState("");
 
   function getParentKey(input) {
@@ -236,13 +325,10 @@ function SearchTab() {
     setResult(null);
     setError(null);
 
-    // run loader for ~1s per step (5 steps = 5s) in parallel with API call
-    const apiPromise = apiRequest(`/tickets/search/${pk}`);
-
-    // minimum display time for the loader
-    await new Promise(r => setTimeout(r, 1000));
-
-    const res = await apiPromise;
+    const [res] = await Promise.all([
+      apiRequest(`/tickets/search/${pk}`),
+      new Promise(r => setTimeout(r, 5000)),
+    ]);
 
     setLoading(false);
 
@@ -253,10 +339,12 @@ function SearchTab() {
 
     setResult({ ...res, input });
 
-    // highlight + redirect to tickets dashboard
+    // ── Open tickets dashboard in a NEW TAB with highlight ──
     if (res.parent?.issue_key) {
       localStorage.setItem("highlight_ticket", res.parent.issue_key);
-      setTimeout(() => { window.open("/tickets", "_blank"); }, 3000);
+      setTimeout(() => {
+        window.open("/tickets", "_blank");   // ← changed from window.location.href
+      }, 3000);
     }
   }
 
@@ -267,11 +355,10 @@ function SearchTab() {
     setParentKey("");
   }
 
-  // find matched child
   const matchedChild = result
     ? result.children?.find(c =>
-        (c.child_key || "").trim().toUpperCase() === result.input ||
-        (c.issue_key || "").trim().toUpperCase() === result.input
+        (c.child_key  || "").trim().toUpperCase() === result.input ||
+        (c.issue_key  || "").trim().toUpperCase() === result.input
       )
     : null;
 
@@ -307,15 +394,12 @@ function SearchTab() {
       {/* Results area */}
       <div className="mt-6">
 
-        {/* Step loader */}
         {loading && <StepLoader parentKey={parentKey} />}
 
-        {/* Error */}
         {!loading && error && (
           <div className="font-mono text-red text-center py-6">❌ {error}</div>
         )}
 
-        {/* Results */}
         {!loading && result && (
           <div className="space-y-4">
 
@@ -342,6 +426,14 @@ function SearchTab() {
                   </div>
                   <div><span className="font-mono text-[0.6rem] text-muted uppercase block mb-0.5">Summary</span>{matchedChild.summary || "-"}</div>
                   <div><span className="font-mono text-[0.6rem] text-muted uppercase block mb-0.5">Description</span>{matchedChild.description || "-"}</div>
+                </div>
+                <div className="mt-3 pt-3 border-t border-yellow/10">
+                  <button
+                    onClick={() => window.open(`${import.meta.env.VITE_JIRA_BASE_URL}/browse/${matchedChild.issue_key}`, "_blank")}
+                    className="w-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all"
+                  >
+                      🔗 Open in Jira
+                  </button>
                 </div>
               </div>
             )}
@@ -380,23 +472,23 @@ function SearchTab() {
                   {/* Actions */}
                   <div className="px-4 py-3 border-t border-purple/10 flex gap-2">
                     <button
-                      onClick={() => window.open(`/runbooks?id=${result.parent.issue_key}`)}
+                      onClick={() => window.open(`/runbooks?id=${result.parent.issue_key}`, "_blank")}
                       className="flex-1 bg-purple/15 border border-purple/20 text-purple text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all hover:bg-purple/25"
                     >
                       ⚙ Runbook
                     </button>
                     <button
-                      onClick={() => window.open("/tickets","_blank")}
-                      className="flex-1 bg-surface2 border border-purple/15 text-slate-300 text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all hover:bg-white/5"
+                      onClick={() => window.open(`${import.meta.env.VITE_JIRA_BASE_URL}/browse/${result.parent.issue_key}`, "_blank")}
+                      className="flex-1 bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all hover:bg-blue-500/20"
                     >
-                      View in Dashboard →
+                      🔗 Open in Jira
                     </button>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Redirect notice */}
+            {/* Redirect notice — updated text to reflect new tab behaviour */}
             {result.parent?.issue_key && (
               <div className="font-mono text-xs text-yellow text-center animate-pulse">
                 Redirecting to dashboard...
