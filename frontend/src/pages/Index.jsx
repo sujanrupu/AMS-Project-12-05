@@ -1,13 +1,13 @@
-import { useState, useEffect} from "react";
+import { useState, useEffect } from "react";
 import { apiRequest } from "../api/apiClient";
 
 // ─────────────────────────────────────────────
 // SUBMIT TAB — matches submit.js exactly
 // ─────────────────────────────────────────────
 function SubmitTab() {
-  const [form,    setForm]    = useState({ name: "", email: "", summary: "", description: "" });
+  const [form, setForm] = useState({ name: "", email: "", summary: "", description: "" });
   const [loading, setLoading] = useState(false);
-  const [result,  setResult]  = useState(null);
+  const [result, setResult] = useState(null);
 
   function handleChange(e) {
     setForm(f => ({ ...f, [e.target.id]: e.target.value }));
@@ -18,9 +18,9 @@ function SubmitTab() {
 
     // ── FRONTEND VALIDATION ──
     const missing = [];
-    if (!form.name.trim())        missing.push("Name");
-    if (!form.email.trim())       missing.push("Email");
-    if (!form.summary.trim())     missing.push("Summary");
+    if (!form.name.trim()) missing.push("Name");
+    if (!form.email.trim()) missing.push("Email");
+    if (!form.summary.trim()) missing.push("Summary");
     if (!form.description.trim()) missing.push("Description");
 
     if (missing.length > 0) {
@@ -31,9 +31,9 @@ function SubmitTab() {
     setLoading(true);
 
     const res = await apiRequest("/submit", "POST", {
-      name:        form.name.trim(),
-      email:       form.email.trim(),
-      summary:     form.summary.trim(),
+      name: form.name.trim(),
+      email: form.email.trim(),
+      summary: form.summary.trim(),
       description: form.description.trim(),
     });
 
@@ -109,19 +109,19 @@ function SubmitTab() {
 // ─────────────────────────────────────────────
 function StepLoader({ parentKey }) {
   const steps = [
-    { icon: "🔍", label: "Fetching ticket details",     sub: "Querying issue registry & metadata" },
-    { icon: "👶", label: "Child & parent detection",    sub: "Mapping parent-child relationships & hierarchy" },
-    { icon: "🔄", label: "Duplicate detection",         sub: "Cross-checking for duplicate & linked issues" },
+    { icon: "🔍", label: "Fetching ticket details", sub: "Querying issue registry & metadata" },
+    { icon: "👶", label: "Child & parent detection", sub: "Mapping parent-child relationships & hierarchy" },
+    { icon: "🔄", label: "Duplicate detection", sub: "Cross-checking for duplicate & linked issues" },
     { icon: "📖", label: "Runbook lookup & generation", sub: "Fetching & compiling resolution runbooks" },
-    { icon: "📦", label: "Preparing dashboard view",    sub: "Finalizing all data for render" },
+    { icon: "📦", label: "Preparing dashboard view", sub: "Finalizing all data for render" },
   ];
 
   const [stepStates, setStepStates] = useState(
     steps.map((_, i) => (i === 0 ? "active" : "pending"))
   );
-  const [barWidth,   setBarWidth]   = useState(0);
-  const [phase,      setPhase]      = useState(1);
-  const [complete,   setComplete]   = useState(false);
+  const [barWidth, setBarWidth] = useState(0);
+  const [phase, setPhase] = useState(1);
+  const [complete, setComplete] = useState(false);
 
   const STEP_MS = 1000;
 
@@ -140,7 +140,7 @@ function StepLoader({ parentKey }) {
         if (cancelled) return;
 
         setStepStates(prev => prev.map((s, idx) => {
-          if (idx === i)     return "done";
+          if (idx === i) return "done";
           if (idx === i + 1) return "active";
           return s;
         }));
@@ -157,12 +157,12 @@ function StepLoader({ parentKey }) {
   const dotStyle = (state) => ({
     width: 10, height: 10, borderRadius: "50%", flexShrink: 0,
     transition: "all 0.35s ease",
-    background:   state === "done"   ? "#a855f7" : "transparent",
-    border:       state === "done"   ? "1.5px solid #a855f7"
-                : state === "active" ? "1.5px solid #a855f7"
-                :                     "1.5px solid #2d2d3e",
-    boxShadow:    state === "done"   ? "0 0 8px #a855f750"   : "none",
-    animation:    state === "active" ? "loaderGlow 1.2s ease-in-out infinite" : "none",
+    background: state === "done" ? "#a855f7" : "transparent",
+    border: state === "done" ? "1.5px solid #a855f7"
+      : state === "active" ? "1.5px solid #a855f7"
+        : "1.5px solid #2d2d3e",
+    boxShadow: state === "done" ? "0 0 8px #a855f750" : "none",
+    animation: state === "active" ? "loaderGlow 1.2s ease-in-out infinite" : "none",
   });
 
   const connStyle = (i) => ({
@@ -175,12 +175,12 @@ function StepLoader({ parentKey }) {
   });
 
   const labelColor = (state) =>
-    state === "done"   ? "#cbd5e1" :
-    state === "active" ? "#f8fafc" : "#374151";
+    state === "done" ? "#cbd5e1" :
+      state === "active" ? "#f8fafc" : "#374151";
 
   const subColor = (state) =>
-    state === "done"   ? "#4b5563" :
-    state === "active" ? "#94a3b8" : "#1f2937";
+    state === "done" ? "#4b5563" :
+      state === "active" ? "#94a3b8" : "#1f2937";
 
   return (
     <div style={{
@@ -215,7 +215,7 @@ function StepLoader({ parentKey }) {
           fontSize: "0.55rem", letterSpacing: "0.06em", textTransform: "uppercase",
           padding: "1px 6px", borderRadius: 20,
           border: complete ? "1px solid rgba(34,197,94,0.25)" : "1px solid rgba(168,85,247,0.2)",
-          color:      complete ? "#22c55e" : "#7c3aed",
+          color: complete ? "#22c55e" : "#7c3aed",
           background: complete ? "rgba(34,197,94,0.06)" : "rgba(168,85,247,0.06)",
         }}>
           {complete ? "Complete" : "Running"}
@@ -303,11 +303,12 @@ function StepLoader({ parentKey }) {
 // SEARCH TAB
 // ─────────────────────────────────────────────
 function SearchTab() {
-  const [query,     setQuery]     = useState("");
-  const [loading,   setLoading]   = useState(false);
-  const [result,    setResult]    = useState(null);
-  const [error,     setError]     = useState(null);
+  const [query, setQuery] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
   const [parentKey, setParentKey] = useState("");
+  const [redirecting, setRedirecting] = useState(false);
 
   function getParentKey(input) {
     const value = input.trim().toUpperCase();
@@ -342,8 +343,12 @@ function SearchTab() {
     // ── Open tickets dashboard in a NEW TAB with highlight ──
     if (res.parent?.issue_key) {
       localStorage.setItem("highlight_ticket", res.parent.issue_key);
+
+      setRedirecting(true);
+
       setTimeout(() => {
-        window.open("/tickets", "_blank");   // ← changed from window.location.href
+        window.open("/tickets", "_blank");
+        setRedirecting(false);
       }, 3000);
     }
   }
@@ -357,9 +362,9 @@ function SearchTab() {
 
   const matchedChild = result
     ? result.children?.find(c =>
-        (c.child_key  || "").trim().toUpperCase() === result.input ||
-        (c.issue_key  || "").trim().toUpperCase() === result.input
-      )
+      (c.child_key || "").trim().toUpperCase() === result.input ||
+      (c.issue_key || "").trim().toUpperCase() === result.input
+    )
     : null;
 
   return (
@@ -432,7 +437,7 @@ function SearchTab() {
                     onClick={() => window.open(`${import.meta.env.VITE_JIRA_BASE_URL}/browse/${matchedChild.issue_key}`, "_blank")}
                     className="w-full bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 text-blue-400 text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all"
                   >
-                      🔗 Open in Jira
+                    🔗 Open in Jira
                   </button>
                 </div>
               </div>
@@ -489,7 +494,7 @@ function SearchTab() {
             )}
 
             {/* Redirect notice — updated text to reflect new tab behaviour */}
-            {result.parent?.issue_key && (
+            {redirecting && (
               <div className="font-mono text-xs text-yellow text-center animate-pulse">
                 Redirecting to dashboard...
               </div>
