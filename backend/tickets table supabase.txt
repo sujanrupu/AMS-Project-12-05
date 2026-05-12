@@ -1,61 +1,80 @@
 Ticket Table creation schema:
 
--- Enable extensions
+-- ─────────────────────────────────────────────
+-- EXTENSIONS
+-- ─────────────────────────────────────────────
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 
--- Create tickets table
-CREATE TABLE IF NOT EXISTS tickets (
+-- ─────────────────────────────────────────────
+-- DROP OLD TABLE
+-- ─────────────────────────────────────────────
+DROP TABLE IF EXISTS tickets CASCADE;
 
-  -- Internal DB UUID
-  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  -- Actual Jira Issue Key
-  -- Example: TP-544
-  issue_key TEXT UNIQUE NOT NULL,
+-- ─────────────────────────────────────────────
+-- CREATE TICKETS TABLE
+-- ─────────────────────────────────────────────
+CREATE TABLE tickets (
 
-  -- Child display key
-  -- Example:
-  -- TP-544.1
-  -- TP-544.2
-  child_key TEXT UNIQUE,
+    -- Internal UUID
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
 
-  -- User details
-  name TEXT NOT NULL,
-  email TEXT NOT NULL,
+    -- Main Jira issue key
+    -- Example: TP-544
+    issue_key TEXT UNIQUE NOT NULL,
 
-  -- Ticket details
-  summary TEXT NOT NULL,
-  description TEXT,
+    -- Child display key
+    -- Example: TP-544.1
+    child_key TEXT UNIQUE,
 
-  -- Status
-  status TEXT NOT NULL DEFAULT 'Open'
-    CHECK (status IN ('Open', 'Completed')),
+    -- User Details
+    name TEXT NOT NULL,
+    email TEXT NOT NULL,
 
-  -- Duplicate tracking
-  is_duplicate BOOLEAN DEFAULT FALSE,
+    -- Ticket Details
+    summary TEXT NOT NULL,
+    description TEXT,
 
-  -- Parent Jira ticket key
-  -- Example: TP-544
-  parent_ticket_key TEXT,
+    -- Ticket Status
+    status TEXT NOT NULL DEFAULT 'Open'
+        CHECK (status IN ('Open', 'Completed', 'Escalated')),
 
-  -- Embeddings
-  embedding VECTOR(384),
+    -- Duplicate Handling
+    is_duplicate BOOLEAN DEFAULT FALSE,
+    parent_ticket_key TEXT,
 
-  -- Timestamps
-  created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW(),
+    -- Embedding
+    embedding VECTOR(384),
 
-  -- Checklist + execution
-  checklist_steps JSONB DEFAULT '[]'::jsonb,
-  commands JSONB DEFAULT '[]'::jsonb,
+    -- Runbook Metadata
+    runbook_title TEXT,
+    runbook_category TEXT,
+    runbook_escalation_team TEXT,
+    match_type TEXT,
 
-  -- RUNBOOK (kept as before)
-  runbook_title TEXT,
-  runbook_category TEXT,
-  runbook_escalation_team TEXT,
-  match_type TEXT
+    -- Combined Step + Command Structure
+    -- Example:
+    -- [
+    --   {
+    --     "step": "Check pod logs",
+    --     "cmd": "kubectl logs ..."
+    --   }
+    -- ]
+    paired_steps JSONB DEFAULT '[]'::jsonb,
+
+    -- Escalation Info
+    escalated_to TEXT,
+    escalation_channel TEXT,
+    escalated_at TIMESTAMPTZ,
+
+    -- Resolution Info
+    resolved_at TIMESTAMPTZ,
+
+    -- Audit
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 
