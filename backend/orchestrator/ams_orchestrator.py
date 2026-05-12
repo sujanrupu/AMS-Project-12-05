@@ -1,8 +1,11 @@
 # orchestrator/ams_orchestrator.py
 
-from modules.duplicate_detection.handler import handle_duplicate_flow
-from modules.runbook_execution.handler   import handle_runbook_flow
-from services.slack_service import send_to_slack
+from backend.modules.duplicate_detection.handler import handle_duplicate_flow
+from backend.modules.priority_sla.handler        import handle_priority_sla
+from backend.modules.runbook_execution.handler   import handle_runbook_flow
+from backend.modules.copilot_rca.handler import handle_rca_flow
+from backend.repositories.ticket_repository import update_ticket_priority
+from backend.services.slack_service import send_to_slack
 
 
 # ─────────────────────────────────────────────
@@ -16,6 +19,12 @@ async def handle_ticket(data):
         "type":    None,
         "id":      None,
         "message": None,
+
+        # priority/sla defaults
+        "priority":            None,
+        "priority_label":      None,
+        "sla_response_time":   None,
+        "sla_resolution_time": None,
         "is_duplicate":        False,
 
         # runbook defaults
@@ -46,10 +55,31 @@ async def handle_ticket(data):
             return normalize_response(state)
 
         # ─────────────────────────────
-        # STEP 2 — RUNBOOK EXECUTION
+        # STEP 2 — PRIORITY + SLA
+        # ─────────────────────────────
+        state = await safe_run_module(handle_priority_sla, state)
+
+        # Persist priority + SLA to DB
+        issue_key = state.get("id")
+        if issue_key:
+            await update_ticket_priority(
+                issue_key=issue_key,
+                priority=state.get("priority"),
+                sla={
+                    "response_time":   state.get("sla_response_time"),
+                    "resolution_time": state.get("sla_resolution_time")
+                },
+                label=state.get("priority_label")
+            )
+
+        # ─────────────────────────────
+        # STEP 3 — RUNBOOK EXECUTION
         # ─────────────────────────────
         state = await safe_run_module(handle_runbook_flow, state)
 
+        # Future modules (uncomment to activate)
+        # state = await safe_run_module(handle_categorization_flow, state)
+        state = await safe_run_module(handle_rca_flow, state)
 
         return normalize_response(state)
 
@@ -99,6 +129,12 @@ def normalize_response(state: dict):
         "type":    state.get("type", "success"),
         "id":      state.get("id"),
         "message": state.get("message"),
+
+        # priority + SLA
+        "priority":            state.get("priority"),
+        "priority_label":      state.get("priority_label"),
+        "sla_response_time":   state.get("sla_response_time"),
+        "sla_resolution_time": state.get("sla_resolution_time"),
 
         # runbook execution
         "runbook": {

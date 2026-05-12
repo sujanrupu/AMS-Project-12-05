@@ -1,7 +1,7 @@
 import FieldLabel  from "./FieldLabel";
 import StatusBadge from "./StatusBadge";
 
-export default function TicketCard({ ticket: t, idx = 0, onDeleteOptions, onOpenChildren, onOpenMerge, onStatusChange }) {
+export default function TicketCard({ ticket: t, idx = 0, onDeleteOptions, onOpenChildren, onOpenMerge, onStatusChange, onOpenRca }) {
   const isCompleted = t.status === "Completed";
   const esc         = localStorage.getItem(`esc_${t.issue_key}`);
 
@@ -81,6 +81,17 @@ export default function TicketCard({ ticket: t, idx = 0, onDeleteOptions, onOpen
         >
           ⚙ Runbook
         </button>
+
+        {/* RCA button — only on parent tickets (no parent_ticket_key) */}
+        {!t.parent_ticket_key && (
+          <button
+            onClick={() => onOpenRca(t.issue_key)}
+            className="flex-1 bg-red/10 hover:bg-red/20 border border-red/15 text-red text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all duration-200 hover:scale-[1.02]"
+          >
+            🔍 RCA
+          </button>
+        )}
+
         <button
           onClick={() => onOpenChildren(t.issue_key)}
           className="flex-1 bg-surface2 hover:bg-white/5 border border-purple/15 text-slate-300 text-[0.65rem] font-bold py-2 px-3 rounded-xl font-mono transition-all duration-200 hover:scale-[1.02]"
