@@ -7,7 +7,7 @@ from repositories.ticket_repository import (
 from repositories.runbook_repository import insert_runbook
 from modules.runbook_execution.handler import handle_runbook_flow
 from services.embedding_service import get_embedding
-from services.escalation_service.slack_service import send_to_slack
+from services.slack_service import send_to_slack
 
 router = APIRouter()
 
