@@ -1,0 +1,57 @@
+-- ═══════════════════════════════════════════════════════════════
+-- FIX: Recreate match_completed_tickets_with_rca
+-- Uses child_key IS NULL (same as match_tickets) for consistency.
+-- Run this in Supabase SQL Editor.
+-- ═══════════════════════════════════════════════════════════════
+
+DROP FUNCTION IF EXISTS match_completed_tickets_with_rca(VECTOR(384), INT);
+
+CREATE OR REPLACE FUNCTION match_completed_tickets_with_rca(
+    query_embedding VECTOR(384),
+    match_count     INT
+)
+RETURNS TABLE (
+    id                  UUID,
+    issue_key           TEXT,
+    summary             TEXT,
+    description         TEXT,
+    status              TEXT,
+    rca_root_cause      TEXT,
+    rca_affected        TEXT,
+    rca_steps           JSONB,
+    rca_confidence      TEXT,
+    rca_source          TEXT,
+    rca_matched_from    TEXT,
+    rca_matched_summary TEXT,
+    similarity          FLOAT
+)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT
+        id,
+        issue_key,
+        summary,
+        description,
+        status,
+        rca_root_cause,
+        rca_affected,
+        rca_steps,
+        rca_confidence,
+        rca_source,
+        rca_matched_from,
+        rca_matched_summary,
+        1 - (embedding <=> query_embedding) AS similarity
+    FROM tickets
+    WHERE
+        embedding        IS NOT NULL       -- must have a vector
+        AND rca_root_cause IS NOT NULL     -- must have an RCA
+        AND status = 'Completed'           -- only resolved tickets
+        AND is_duplicate = FALSE           -- not a duplicate
+        AND child_key IS NULL              -- parent tickets only (consistent with match_tickets)
+    ORDER BY embedding <=> query_embedding
+    LIMIT match_count;
+$$;
+
+-- Verify it exists:
+SELECT proname, pronargs FROM pg_proc WHERE proname = 'match_completed_tickets_with_rca';

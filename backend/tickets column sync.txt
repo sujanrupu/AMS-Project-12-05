@@ -1,0 +1,288 @@
+-- ═══════════════════════════════════════════════════════════════════
+-- TICKETS TABLE — COMPLETE COLUMN SYNC
+-- Run this in Supabase SQL Editor.
+-- Safe to run multiple times — all changes use IF NOT EXISTS guards.
+-- Does NOT drop or recreate the table — your existing rows are safe.
+-- ═══════════════════════════════════════════════════════════════════
+
+DO $$
+BEGIN
+
+    -- ── child_key ──────────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'child_key'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN child_key TEXT UNIQUE;
+        RAISE NOTICE 'Added: child_key';
+    ELSE
+        RAISE NOTICE 'Already exists: child_key';
+    END IF;
+
+    -- ── paired_steps ───────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'paired_steps'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN paired_steps JSONB DEFAULT '[]'::jsonb;
+        RAISE NOTICE 'Added: paired_steps';
+    ELSE
+        RAISE NOTICE 'Already exists: paired_steps';
+    END IF;
+
+    -- ── runbook_title ──────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'runbook_title'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN runbook_title TEXT;
+        RAISE NOTICE 'Added: runbook_title';
+    ELSE
+        RAISE NOTICE 'Already exists: runbook_title';
+    END IF;
+
+    -- ── runbook_category ───────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'runbook_category'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN runbook_category TEXT;
+        RAISE NOTICE 'Added: runbook_category';
+    ELSE
+        RAISE NOTICE 'Already exists: runbook_category';
+    END IF;
+
+    -- ── runbook_escalation_team ────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'runbook_escalation_team'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN runbook_escalation_team TEXT;
+        RAISE NOTICE 'Added: runbook_escalation_team';
+    ELSE
+        RAISE NOTICE 'Already exists: runbook_escalation_team';
+    END IF;
+
+    -- ── match_type ─────────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'match_type'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN match_type TEXT;
+        RAISE NOTICE 'Added: match_type';
+    ELSE
+        RAISE NOTICE 'Already exists: match_type';
+    END IF;
+
+    -- ── escalated_to ───────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'escalated_to'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN escalated_to TEXT;
+        RAISE NOTICE 'Added: escalated_to';
+    ELSE
+        RAISE NOTICE 'Already exists: escalated_to';
+    END IF;
+
+    -- ── escalation_channel ─────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'escalation_channel'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN escalation_channel TEXT;
+        RAISE NOTICE 'Added: escalation_channel';
+    ELSE
+        RAISE NOTICE 'Already exists: escalation_channel';
+    END IF;
+
+    -- ── escalated_at ───────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'escalated_at'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN escalated_at TIMESTAMPTZ;
+        RAISE NOTICE 'Added: escalated_at';
+    ELSE
+        RAISE NOTICE 'Already exists: escalated_at';
+    END IF;
+
+    -- ── resolved_at ────────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'resolved_at'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN resolved_at TIMESTAMPTZ;
+        RAISE NOTICE 'Added: resolved_at';
+    ELSE
+        RAISE NOTICE 'Already exists: resolved_at';
+    END IF;
+
+    -- ── updated_at ─────────────────────────────────────────────────
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'updated_at'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN updated_at TIMESTAMPTZ DEFAULT NOW();
+        RAISE NOTICE 'Added: updated_at';
+    ELSE
+        RAISE NOTICE 'Already exists: updated_at';
+    END IF;
+
+    -- ── RCA COLUMNS ────────────────────────────────────────────────
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'rca_root_cause'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN rca_root_cause TEXT;
+        RAISE NOTICE 'Added: rca_root_cause';
+    ELSE
+        RAISE NOTICE 'Already exists: rca_root_cause';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'rca_affected'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN rca_affected TEXT;
+        RAISE NOTICE 'Added: rca_affected';
+    ELSE
+        RAISE NOTICE 'Already exists: rca_affected';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'rca_steps'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN rca_steps JSONB DEFAULT '[]'::jsonb;
+        RAISE NOTICE 'Added: rca_steps';
+    ELSE
+        RAISE NOTICE 'Already exists: rca_steps';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'rca_confidence'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN rca_confidence TEXT
+            CHECK (rca_confidence IN ('HIGH', 'MEDIUM', 'LOW', 'HUMAN'));
+        RAISE NOTICE 'Added: rca_confidence';
+    ELSE
+        RAISE NOTICE 'Already exists: rca_confidence';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'rca_source'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN rca_source TEXT;
+        RAISE NOTICE 'Added: rca_source';
+    ELSE
+        RAISE NOTICE 'Already exists: rca_source';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'rca_matched_from'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN rca_matched_from TEXT;
+        RAISE NOTICE 'Added: rca_matched_from';
+    ELSE
+        RAISE NOTICE 'Already exists: rca_matched_from';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_name = 'tickets' AND column_name = 'rca_matched_summary'
+    ) THEN
+        ALTER TABLE tickets ADD COLUMN rca_matched_summary TEXT;
+        RAISE NOTICE 'Added: rca_matched_summary';
+    ELSE
+        RAISE NOTICE 'Already exists: rca_matched_summary';
+    END IF;
+
+END $$;
+
+
+-- ═══════════════════════════════════════════════════════════════════
+-- PERFORMANCE INDEXES (safe — all use IF NOT EXISTS)
+-- ═══════════════════════════════════════════════════════════════════
+
+CREATE INDEX IF NOT EXISTS idx_tickets_child_key
+    ON tickets(child_key);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_parent_ticket
+    ON tickets(parent_ticket_key);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_duplicate
+    ON tickets(is_duplicate);
+
+CREATE INDEX IF NOT EXISTS idx_tickets_status
+    ON tickets(status);
+
+
+-- ═══════════════════════════════════════════════════════════════════
+-- RECREATE match_completed_tickets_with_rca FUNCTION
+-- (needed for Layer B vector search in rca_routes.py)
+-- ═══════════════════════════════════════════════════════════════════
+
+DROP FUNCTION IF EXISTS match_completed_tickets_with_rca(VECTOR(384), INT);
+
+CREATE OR REPLACE FUNCTION match_completed_tickets_with_rca(
+    query_embedding VECTOR(384),
+    match_count     INT
+)
+RETURNS TABLE (
+    id                  UUID,
+    issue_key           TEXT,
+    summary             TEXT,
+    description         TEXT,
+    status              TEXT,
+    rca_root_cause      TEXT,
+    rca_affected        TEXT,
+    rca_steps           JSONB,
+    rca_confidence      TEXT,
+    rca_source          TEXT,
+    rca_matched_from    TEXT,
+    rca_matched_summary TEXT,
+    similarity          FLOAT
+)
+LANGUAGE sql
+STABLE
+AS $$
+    SELECT
+        id,
+        issue_key,
+        summary,
+        description,
+        status,
+        rca_root_cause,
+        rca_affected,
+        rca_steps,
+        rca_confidence,
+        rca_source,
+        rca_matched_from,
+        rca_matched_summary,
+        1 - (embedding <=> query_embedding) AS similarity
+    FROM tickets
+    WHERE
+        embedding           IS NOT NULL
+        AND rca_root_cause  IS NOT NULL
+        AND status          = 'Completed'
+        AND is_duplicate    = FALSE
+        AND parent_ticket_key IS NULL
+    ORDER BY embedding <=> query_embedding
+    LIMIT match_count;
+$$;
+
+
+-- ═══════════════════════════════════════════════════════════════════
+-- VERIFY — run these SELECT statements one at a time to confirm
+-- ═══════════════════════════════════════════════════════════════════
+
+-- Should show ALL columns including child_key, paired_steps, and all rca_* columns:
+SELECT column_name, data_type
+FROM information_schema.columns
+WHERE table_name = 'tickets'
+ORDER BY ordinal_position;
