@@ -1,16 +1,10 @@
 # orchestrator/ams_orchestrator.py
 
 from backend.modules.duplicate_detection.handler import handle_duplicate_flow
-from backend.modules.priority_sla.handler        import handle_priority_sla
 from backend.modules.runbook_execution.handler   import handle_runbook_flow
-from backend.modules.copilot_rca.handler import handle_rca_flow
-from backend.repositories.ticket_repository import update_ticket_priority
-from backend.services.slack_service import send_to_slack
+from backend.modules.copilot_rca.handler         import handle_rca_flow
 
 
-# ─────────────────────────────────────────────
-# MAIN ORCHESTRATOR
-# ─────────────────────────────────────────────
 async def handle_ticket(data):
 
     state = {
@@ -20,12 +14,8 @@ async def handle_ticket(data):
         "id":      None,
         "message": None,
 
-        # priority/sla defaults
-        "priority":            None,
-        "priority_label":      None,
-        "sla_response_time":   None,
-        "sla_resolution_time": None,
-        "is_duplicate":        False,
+        # duplicate flag
+        "is_duplicate": False,
 
         # runbook defaults
         "runbook_title":    None,
@@ -35,50 +25,33 @@ async def handle_ticket(data):
         "match_type":       None,
         "checklist_steps":  [],
         "commands":         [],
+
+        # rca defaults  ← these were absent, causing normalize_response to drop them
+        "rca_root_cause":       None,
+        "rca_affected":         None,
+        "rca_steps":            [],
+        "rca_confidence":       None,
+        "rca_confidence_label": None,
+        "rca_summary":          None,
     }
 
     try:
 
-        # ─────────────────────────────
         # STEP 1 — DUPLICATE DETECTION
-        # ─────────────────────────────
         state = await safe_run_module(handle_duplicate_flow, state)
 
-        # summary safety fallback
         if not state.get("summary") and state.get("data"):
             data_obj = state["data"]
             state["summary"] = getattr(data_obj, "summary", "") \
                 if hasattr(data_obj, "summary") else ""
 
-        # Stop pipeline immediately if duplicate
         if state.get("is_duplicate"):
             return normalize_response(state)
 
-        # ─────────────────────────────
-        # STEP 2 — PRIORITY + SLA
-        # ─────────────────────────────
-        state = await safe_run_module(handle_priority_sla, state)
-
-        # Persist priority + SLA to DB
-        issue_key = state.get("id")
-        if issue_key:
-            await update_ticket_priority(
-                issue_key=issue_key,
-                priority=state.get("priority"),
-                sla={
-                    "response_time":   state.get("sla_response_time"),
-                    "resolution_time": state.get("sla_resolution_time")
-                },
-                label=state.get("priority_label")
-            )
-
-        # ─────────────────────────────
-        # STEP 3 — RUNBOOK EXECUTION
-        # ─────────────────────────────
+        # STEP 2 — RUNBOOK EXECUTION
         state = await safe_run_module(handle_runbook_flow, state)
 
-        # Future modules (uncomment to activate)
-        # state = await safe_run_module(handle_categorization_flow, state)
+        # STEP 3 — RCA GENERATION + DB SAVE
         state = await safe_run_module(handle_rca_flow, state)
 
         return normalize_response(state)
@@ -90,53 +63,23 @@ async def handle_ticket(data):
         }
 
 
-# ─────────────────────────────────────────────
-# SAFE RUNNER
-# ─────────────────────────────────────────────
 async def safe_run_module(module_fn, state: dict):
-    """
-    Runs a module safely.
-    Uses state.update(result) so all keys accumulate
-    across the pipeline without losing previous state.
-    """
     try:
         result = await module_fn(state)
-
         if not isinstance(result, dict):
-            return {
-                **state,
-                "type":    "error",
-                "message": "Module returned invalid state"
-            }
-
+            return {**state, "type": "error", "message": "Module returned invalid state"}
         state.update(result)
         return state
-
     except Exception as e:
-        return {
-            **state,
-            "type":    "error",
-            "message": f"Module failed: {str(e)}"
-        }
+        return {**state, "type": "error", "message": f"Module failed: {str(e)}"}
 
 
-# ─────────────────────────────────────────────
-# RESPONSE NORMALIZER
-# ─────────────────────────────────────────────
 def normalize_response(state: dict):
     return {
-        # core
         "type":    state.get("type", "success"),
         "id":      state.get("id"),
         "message": state.get("message"),
 
-        # priority + SLA
-        "priority":            state.get("priority"),
-        "priority_label":      state.get("priority_label"),
-        "sla_response_time":   state.get("sla_response_time"),
-        "sla_resolution_time": state.get("sla_resolution_time"),
-
-        # runbook execution
         "runbook": {
             "title":      state.get("runbook_title"),
             "category":   state.get("runbook_category"),
@@ -147,4 +90,14 @@ def normalize_response(state: dict):
 
         "checklist_steps": state.get("checklist_steps", []),
         "commands":        state.get("commands", []),
+
+        # RCA — was completely missing from old normalize_response
+        "rca": {
+            "root_cause":       state.get("rca_root_cause"),
+            "affected":         state.get("rca_affected"),
+            "steps":            state.get("rca_steps", []),
+            "confidence":       state.get("rca_confidence"),
+            "confidence_label": state.get("rca_confidence_label"),
+            "summary":          state.get("rca_summary"),
+        } if state.get("rca_root_cause") else None,
     }

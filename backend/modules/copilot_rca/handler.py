@@ -1,9 +1,13 @@
-from .agent import is_same_issue, generate_fresh_rca
+# modules/copilot_rca/handler.py
+
+from .agent import generate_fresh_rca
 from .service import get_confidence_label, get_rca_summary
+from backend.repositories.ticket_repository import update_ticket_rca
 
 
 async def handle_rca_flow(state: dict) -> dict:
     try:
+        issue_key   = state.get("id")
         summary     = state.get("summary", "")
         description = ""
 
@@ -15,30 +19,34 @@ async def handle_rca_flow(state: dict) -> dict:
                 description = raw_data.get("description", "")
 
         if not summary:
-            return {
-                **state,
-                "type":    "error",
-                "message": "RCA module: ticket summary is empty",
-            }
+            return {**state, "type": "error", "message": "RCA module: ticket summary is empty"}
 
         if not description:
-            return {
-                **state,
-                "type":    "error",
-                "message": "RCA module: ticket description is empty",
-            }
+            return {**state, "type": "error", "message": "RCA module: ticket description is empty"}
 
         result = generate_fresh_rca({"summary": summary, "description": description})
 
-        if result.get("status") == "error":
-            return {
-                **state,
-                "type":    "error",
-                "message": result.get("root_cause", "RCA generation failed"),
-            }
-
         confidence = result.get("confidence", "LOW")
         affected   = result.get("affected_component", "Unknown")
+
+        # ── Save RCA to Supabase tickets table ──
+        if issue_key:
+            saved = await update_ticket_rca(
+                issue_key          = issue_key,
+                root_cause         = result.get("root_cause", ""),
+                affected_component = affected,
+                resolution_steps   = result.get("resolution_steps", []),
+                confidence         = confidence,
+                source             = "generated",
+                matched_from       = None,
+                matched_summary    = None,
+            )
+            if saved:
+                print(f"💾 [{issue_key}] RCA saved to Supabase (confidence: {confidence})")
+            else:
+                print(f"⚠️  [{issue_key}] RCA generated but DB save failed")
+        else:
+            print("⚠️  handle_rca_flow: no issue_key in state — RCA not saved")
 
         return {
             **state,
@@ -54,8 +62,4 @@ async def handle_rca_flow(state: dict) -> dict:
 
     except Exception as e:
         print(f"❌ handle_rca_flow error: {e}")
-        return {
-            **state,
-            "type":    "error",
-            "message": f"RCA module failed: {str(e)}",
-        }
+        return {**state, "type": "error", "message": f"RCA module failed: {str(e)}"}

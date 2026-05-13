@@ -1,6 +1,6 @@
 # modules/runbook_execution/handler.py
 
-from modules.runbook_execution.agent import RunbookAgent
+from backend.modules.runbook_execution.agent import RunbookAgent
 
 
 async def handle_runbook_flow(state: dict) -> dict:

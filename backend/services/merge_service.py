@@ -1,12 +1,12 @@
 # services/merge_service.py
 
-from repositories.ticket_repository import (
+from backend.repositories.ticket_repository import (
     get_all_tickets,
     get_children,
     supabase
 )
 
-from services.jira_service import (
+from backend.services.jira_service import (
     complete_parent_and_children
 )
 

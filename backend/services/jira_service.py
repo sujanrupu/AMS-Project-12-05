@@ -3,9 +3,9 @@
 import httpx
 import re
 
-from core.config import Config
+from backend.core.config import Config
 
-from repositories.ticket_repository import (
+from backend.repositories.ticket_repository import (
     get_all_tickets
 )
 

@@ -5,7 +5,7 @@ export function useTickets() {
   const [tickets,      setTickets]      = useState([]);
   const [loading,      setLoading]      = useState(true);
   const [childModal,   setChildModal]   = useState(null);
-  const [deleteModal,  setDeleteModal]  = useState(null); // { issueKey }
+  const [deleteModal,  setDeleteModal]  = useState(null);
   const [mergeModal,   setMergeModal]   = useState(null);
   const [mergeTickets, setMergeTickets] = useState([]);
 
@@ -18,7 +18,13 @@ export function useTickets() {
         Array.isArray(res)          ? res :
         Array.isArray(res?.tickets) ? res.tickets :
         Array.isArray(res?.data)    ? res.data : [];
-      setTickets(all.filter(t => !t.parent_ticket_key && !t.child_key));
+
+      // Show only true parent tickets:
+      //   • no parent_ticket_key  → not a child
+      //   • is_duplicate === false → not a duplicate
+      setTickets(
+        all.filter(t => !t.parent_ticket_key && t.is_duplicate === false)
+      );
     } catch (err) {
       console.error("❌ loadTickets error:", err);
     } finally {
@@ -35,12 +41,10 @@ export function useTickets() {
     setTimeout(() => loadTickets(), 500);
   }, [loadTickets]);
 
-  // ── OPEN DELETE OPTIONS MODAL (matches showDeleteOptions in tickets.js) ──
-  const openDeleteModal = useCallback((issueKey) => {
-    setDeleteModal({ issueKey });
-  }, []);
+  // ── DELETE MODAL ──
+  const openDeleteModal  = useCallback((issueKey) => setDeleteModal({ issueKey }), []);
 
-  // ── DELETE PARENT + ALL CHILDREN (cascade) ──
+  // ── DELETE PARENT + ALL CHILDREN ──
   const deleteParentCascade = useCallback(async (issueKey) => {
     const res = await apiRequest(`/tickets/${issueKey}`, "DELETE");
     if (res?.error) { console.error("❌ Cascade delete failed:", res.message); return; }
@@ -64,7 +68,7 @@ export function useTickets() {
     loadTickets();
   }, [loadTickets]);
 
-  // ── OPEN CHILD MODAL ──
+  // ── CHILD MODAL ──
   const openChildModal = useCallback(async (parentKey) => {
     const res = await apiRequest("/tickets");
     const all =
@@ -75,7 +79,6 @@ export function useTickets() {
     setChildModal({ parentKey, children });
   }, []);
 
-  // ── DETACH CHILD ──
   const detachChild = useCallback(async (issueKey) => {
     const res = await apiRequest(`/tickets/${issueKey}/detach`, "PUT");
     if (res?.error) { console.error("❌ Detach failed:", res.message); return; }
@@ -83,7 +86,7 @@ export function useTickets() {
     loadTickets();
   }, [loadTickets]);
 
-  // ── OPEN MERGE MODAL ──
+  // ── MERGE MODAL ──
   const openMergeModal = useCallback(async (targetKey) => {
     const res = await apiRequest("/tickets");
     const all =
@@ -91,13 +94,12 @@ export function useTickets() {
       Array.isArray(res?.tickets) ? res.tickets :
       Array.isArray(res?.data)    ? res.data : [];
     const parents = all.filter(t =>
-      !t.parent_ticket_key && !t.child_key && t.issue_key !== targetKey
+      !t.parent_ticket_key && t.is_duplicate === false && t.issue_key !== targetKey
     );
     setMergeTickets(parents);
     setMergeModal({ targetKey });
   }, []);
 
-  // ── EXECUTE MERGE ──
   const executeMerge = useCallback(async (targetKey, sourceKey) => {
     const res = await apiRequest("/tickets/merge", "POST", {
       target_parent_key:  targetKey,
@@ -111,12 +113,9 @@ export function useTickets() {
   return {
     tickets, loading, loadTickets,
     updateStatus,
-    // delete
     deleteModal, openDeleteModal, closeDeleteModal: () => setDeleteModal(null),
     deleteParentCascade, deleteParentOnly, deleteSingleChild,
-    // child modal
     childModal, openChildModal, closeChildModal: () => setChildModal(null), detachChild,
-    // merge modal
     mergeModal, mergeTickets, openMergeModal, closeMergeModal: () => setMergeModal(null), executeMerge,
   };
 }

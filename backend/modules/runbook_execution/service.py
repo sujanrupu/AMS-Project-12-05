@@ -1,8 +1,8 @@
 # modules/runbook_execution/service.py
 
-from services.embedding_service import get_embedding
-from repositories.runbook_repository import search_runbooks_by_vector
-from core.constants import RUNBOOK_SIMILARITY_THRESHOLD
+from backend.services.embedding_service import get_embedding
+from backend.repositories.runbook_repository import search_runbooks_by_vector
+from backend.core.constants import RUNBOOK_SIMILARITY_THRESHOLD
 
 
 # ─────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 # repositories/ticket_repository.py
 
 from supabase import create_client
-from core.config import Config
+from backend.core.config import Config
 
 supabase = create_client(
     Config.SUPABASE_URL,
@@ -22,11 +22,19 @@ ALLOWED_FIELDS = {
     "is_duplicate",
     "parent_ticket_key",
     "embedding",
-    "paired_steps",          
+    "paired_steps",
     "runbook_title",
     "runbook_category",
     "runbook_escalation_team",
-    "match_type"
+    "match_type",
+    # ── RCA fields ──
+    "rca_root_cause",
+    "rca_affected",
+    "rca_steps",
+    "rca_confidence",
+    "rca_source",
+    "rca_matched_from",
+    "rca_matched_summary",
 }
 
 # ─────────────────────────────────────────────
@@ -43,7 +51,7 @@ async def insert_ticket(data):
             data["embedding"] = [float(x) for x in data["embedding"]]
 
         data.setdefault("child_key",    None)
-        data.setdefault("paired_steps", None)  
+        data.setdefault("paired_steps", None)
 
         res = supabase.table("tickets").insert(data).execute()
         return res.data[0] if res.data else None
@@ -85,7 +93,7 @@ async def get_ticket(issue_key: str):
 
 
 # ─────────────────────────────────────────────
-# VECTOR SEARCH
+# VECTOR SEARCH  (open, non-duplicate parents)
 # ─────────────────────────────────────────────
 async def search_similar_tickets(query_embedding, top_k=5):
     try:
@@ -107,6 +115,80 @@ async def search_similar_tickets(query_embedding, top_k=5):
     except Exception as e:
         print("❌ vector search error:", str(e))
         return []
+
+
+# ─────────────────────────────────────────────
+# SEARCH COMPLETED TICKETS WITH RCA
+# Used by rca_routes.py Layer B to find past
+# resolved tickets that already have an RCA,
+# so the result can be copied to the new ticket.
+# ─────────────────────────────────────────────
+async def search_completed_tickets_with_rca(query_embedding: list, top_k: int = 5) -> list:
+    """
+    Vector-similarity search over completed parent tickets that already
+    have an rca_root_cause stored.  Returns the top_k closest matches
+    sorted by cosine similarity descending, each row including all RCA
+    fields so rca_routes.py can copy them directly.
+    """
+    try:
+        if not query_embedding:
+            return []
+
+        query_embedding = [float(x) for x in query_embedding]
+
+        res = supabase.rpc(
+            "match_completed_tickets_with_rca",
+            {
+                "query_embedding": query_embedding,
+                "match_count":     top_k,
+            }
+        ).execute()
+
+        return res.data or []
+
+    except Exception as e:
+        print("❌ search_completed_tickets_with_rca error:", str(e))
+        return []
+
+
+# ─────────────────────────────────────────────
+# UPDATE TICKET RCA
+# Persists the generated / matched / human RCA
+# back into the tickets row in Supabase.
+# ─────────────────────────────────────────────
+async def update_ticket_rca(
+    issue_key:          str,
+    root_cause:         str,
+    affected_component: str,
+    resolution_steps:   list,
+    confidence:         str,
+    source:             str,
+    matched_from:       str | None = None,
+    matched_summary:    str | None = None,
+) -> bool:
+    """
+    Writes all RCA fields to the tickets table row identified by issue_key.
+    """
+    try:
+        res = (
+            supabase.table("tickets")
+            .update({
+                "rca_root_cause":    root_cause,
+                "rca_affected":      affected_component,
+                "rca_steps":         resolution_steps,
+                "rca_confidence":    confidence,
+                "rca_source":        source,
+                "rca_matched_from":  matched_from,
+                "rca_matched_summary": matched_summary,
+            })
+            .eq("issue_key", issue_key)
+            .execute()
+        )
+        return bool(res.data)
+
+    except Exception as e:
+        print(f"❌ update_ticket_rca error: {e}")
+        return False
 
 
 # ─────────────────────────────────────────────
@@ -175,7 +257,7 @@ async def update_status_cascade(parent_key: str, status: str):
 # ─────────────────────────────────────────────
 async def update_ticket_runbook(
     issue_key:               str,
-    paired_steps:            list,       
+    paired_steps:            list,
     runbook_title:           str = None,
     runbook_category:        str = None,
     runbook_escalation_team: str = None,
