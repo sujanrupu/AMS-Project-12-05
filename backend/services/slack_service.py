@@ -1,6 +1,6 @@
 import httpx
-from core.config import Config
-from services.llm_service import call_llm
+from backend.core.config import Config
+from backend.services.llm_service import call_llm
 
 
 # ─────────────────────────────────────────────

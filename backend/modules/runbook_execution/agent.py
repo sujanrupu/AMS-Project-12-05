@@ -1,12 +1,12 @@
 # modules/runbook_execution/agent.py
 
-from services.llm_service import call_llm
-from modules.runbook_execution.service import (
+from backend.services.llm_service import call_llm
+from backend.modules.runbook_execution.service import (
     fetch_best_runbook,
     parse_llm_output,
     filter_safe_commands,
 )
-from modules.runbook_execution.prompt import (
+from backend.modules.runbook_execution.prompt import (
     RUNBOOK_CHECKLIST_PROMPT,
     FALLBACK_CHECKLIST_PROMPT,
 )

@@ -3,14 +3,14 @@
 from fastapi import APIRouter, HTTPException
 
 # schemas + orchestrator
-from schemas.ticket_schema import TicketRequest
-from orchestrator.ams_orchestrator import handle_ticket
-from repositories.ticket_repository import search_similar_tickets
-from services.embedding_service import get_embedding
+from backend.schemas.ticket_schema import TicketRequest
+from backend.orchestrator.ams_orchestrator import handle_ticket
+from backend.repositories.ticket_repository import search_similar_tickets
+from backend.services.embedding_service import get_embedding
 
 # repository layer
 # repository layer
-from repositories.ticket_repository import (
+from backend.repositories.ticket_repository import (
     get_all_tickets,
     delete_ticket_cascade,
     update_status_cascade,
@@ -26,13 +26,13 @@ from repositories.ticket_repository import (
 )
 
 # Jira integration
-from services.jira_service import (
+from backend.services.jira_service import (
     complete_parent_and_children,
     delete_parent_and_children,
 )
 
 
-from services.merge_service import merge_tickets
+from backend.services.merge_service import merge_tickets
 
 router = APIRouter()
 
@@ -164,14 +164,14 @@ async def delete_parent_only(issueKey: str):
 
     try:
 
-        from repositories.ticket_repository import (
+        from backend.repositories.ticket_repository import (
             get_children,
             delete_ticket,
             update_parent,
             promote_first_child_as_parent
         )
 
-        from services.jira_service import (
+        from backend.services.jira_service import (
             delete_jira_ticket
         )
 
@@ -271,12 +271,12 @@ async def delete_single_child(issueKey: str):
 
     try:
 
-        from repositories.ticket_repository import (
+        from backend.repositories.ticket_repository import (
             delete_ticket,
             get_ticket
         )
 
-        from services.jira_service import (
+        from backend.services.jira_service import (
             delete_jira_ticket
         )
 
@@ -618,7 +618,7 @@ async def detach_ticket(issueKey: str):
                 "message": "Only child tickets can be detached"
             }
 
-        from repositories.ticket_repository import detach_child_ticket
+        from backend.repositories.ticket_repository import detach_child_ticket
 
         ok = await detach_child_ticket(issueKey)
 

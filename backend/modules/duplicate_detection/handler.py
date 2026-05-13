@@ -1,19 +1,19 @@
 # modules/duplicate_detection/handler.py
 
-from core.constants import SIMILARITY_THRESHOLD
+from backend.core.constants import SIMILARITY_THRESHOLD
 
-from modules.duplicate_detection.agent import find_best_match
-from modules.duplicate_detection.service import generate_related
+from backend.modules.duplicate_detection.agent import find_best_match
+from backend.modules.duplicate_detection.service import generate_related
 
-from services.jira_service import (
+from backend.services.jira_service import (
     create_ticket,
     generate_child_id,
     append_duplicate
 )
 
-from services.embedding_service import get_embedding
+from backend.services.embedding_service import get_embedding
 
-from repositories.ticket_repository import (
+from backend.repositories.ticket_repository import (
     get_all_tickets,
     insert_ticket,
     search_similar_tickets

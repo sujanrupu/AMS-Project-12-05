@@ -1,5 +1,5 @@
 from groq import Groq
-from core.config import Config
+from backend.core.config import Config
 
 client = Groq(api_key=Config.GROQ_API_KEY)
 

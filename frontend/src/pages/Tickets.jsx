@@ -1,9 +1,11 @@
 import { useEffect }    from "react";
 import { useTickets }   from "../hooks/useTickets";
+import { useRca }       from "../hooks/useRca";
 import TicketCard       from "../components/TicketCard";
 import ChildModal       from "../components/ChildModal";
 import MergeModal       from "../components/MergeModal";
 import DeleteModal      from "../components/DeleteModal";
+import RcaModal         from "../components/RcaModal";
 
 export default function Tickets() {
   const {
@@ -17,6 +19,11 @@ export default function Tickets() {
     // merge modal
     mergeModal, mergeTickets, openMergeModal, closeMergeModal, executeMerge,
   } = useTickets();
+
+  const {
+    rcaModal, rcaData, rcaLoading, rcaError,
+    openRcaModal, closeRcaModal, submitHuman,
+  } = useRca();
 
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
@@ -83,10 +90,11 @@ export default function Tickets() {
               key={t.issue_key}
               ticket={t}
               idx={idx}
-              onDeleteOptions={openDeleteModal}   
+              onDeleteOptions={openDeleteModal}
               onOpenChildren={openChildModal}
               onOpenMerge={openMergeModal}
               onStatusChange={updateStatus}
+              onOpenRca={openRcaModal}
             />
           ))}
         </div>
@@ -99,7 +107,7 @@ export default function Tickets() {
           children={childModal.children}
           onClose={closeChildModal}
           onDetach={detachChild}
-          onDeleteChild={deleteSingleChild}       
+          onDeleteChild={deleteSingleChild}
         />
       )}
 
@@ -120,6 +128,20 @@ export default function Tickets() {
           onClose={closeDeleteModal}
           onDeleteParentOnly={deleteParentOnly}
           onDeleteCascade={deleteParentCascade}
+        />
+      )}
+
+      {/* RCA Modal */}
+      {rcaModal && (
+        <RcaModal
+          issueKey={rcaModal.issueKey}
+          data={rcaData}
+          loading={rcaLoading}
+          error={rcaError}
+          onClose={closeRcaModal}
+          onSubmitHuman={(rootCause, affected) =>
+            submitHuman(rcaModal.issueKey, { rootCause, affected })
+          }
         />
       )}
 

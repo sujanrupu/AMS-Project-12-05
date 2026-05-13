@@ -1,0 +1,508 @@
+-- ============================================================
+--  AMS — RCA KNOWLEDGE BASE (Supabase)
+--  Run this entire script in Supabase SQL Editor
+-- ============================================================
+
+-- 1. Enable pgvector (already enabled if tickets table works)
+CREATE EXTENSION IF NOT EXISTS vector;
+
+
+-- ============================================================
+-- 2. RCA KNOWLEDGE BASE TABLE
+-- ============================================================
+CREATE TABLE IF NOT EXISTS rca_knowledge_base (
+    id                  BIGSERIAL PRIMARY KEY,
+
+    -- Incident classification
+    title               TEXT NOT NULL,
+    category            TEXT NOT NULL,   -- Database, Network, Application, etc.
+    severity            TEXT NOT NULL CHECK (severity IN ('P1','P2','P3','P4','P5')),
+
+    -- What triggers this RCA entry
+    keywords            TEXT NOT NULL,
+    symptoms            TEXT NOT NULL,
+
+    -- The actual RCA content
+    root_cause          TEXT NOT NULL,
+    affected_component  TEXT NOT NULL,
+    resolution_steps    JSONB NOT NULL DEFAULT '[]',
+    confidence          TEXT NOT NULL CHECK (confidence IN ('HIGH','MEDIUM','LOW')),
+
+    -- Ownership + metadata
+    owner               TEXT,
+    environment         TEXT DEFAULT 'Production',
+    ci_asset            TEXT,
+    recurrence_count    INT  DEFAULT 1,
+
+    status              TEXT DEFAULT 'Active'
+        CHECK (status IN ('Active','Deprecated','Under Review')),
+
+    -- Semantic search embedding (384-dim, same model as tickets)
+    embedding           VECTOR(384),
+
+    last_used_at        TIMESTAMP,
+    created_at          TIMESTAMP DEFAULT NOW(),
+    updated_at          TIMESTAMP DEFAULT NOW()
+);
+
+
+-- ============================================================
+-- 3. VECTOR INDEX
+-- ============================================================
+CREATE INDEX IF NOT EXISTS idx_rca_kb_embedding
+ON rca_knowledge_base
+USING ivfflat (embedding vector_cosine_ops)
+WITH (lists = 100);
+
+
+-- ============================================================
+-- 4. VECTOR SEARCH FUNCTION
+-- ============================================================
+CREATE OR REPLACE FUNCTION match_rca_knowledge_base(
+    query_embedding VECTOR(384),
+    match_count     INT
+)
+RETURNS TABLE (
+    id                  BIGINT,
+    title               TEXT,
+    category            TEXT,
+    severity            TEXT,
+    symptoms            TEXT,
+    root_cause          TEXT,
+    affected_component  TEXT,
+    resolution_steps    JSONB,
+    confidence          TEXT,
+    ci_asset            TEXT,
+    recurrence_count    INT,
+    similarity          FLOAT
+)
+LANGUAGE sql STABLE
+AS $$
+    SELECT
+        id, title, category, severity, symptoms,
+        root_cause, affected_component, resolution_steps,
+        confidence, ci_asset, recurrence_count,
+        1 - (embedding <=> query_embedding) AS similarity
+    FROM rca_knowledge_base
+    WHERE status = 'Active'
+      AND embedding IS NOT NULL
+    ORDER BY embedding <=> query_embedding
+    LIMIT match_count;
+$$;
+
+
+-- ============================================================
+-- 5. SEED DATA — 14 DETAILED RCA ENTRIES
+--    (covers all runbook categories + common ITSM incidents)
+-- ============================================================
+
+-- RCA 1 — Database Connection Failure
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'PostgreSQL Max Connections Exhausted',
+    'Database', 'P1',
+    'database connection timeout, postgres, connection refused, max_connections, connection pool exhausted',
+    'Application throwing DB timeout errors. Connection refused on all attempts. pg_stat_activity shows hundreds of idle connections. Application returning 503 to users.',
+    'The PostgreSQL max_connections limit was reached due to connection pool misconfiguration. Idle connections from application instances were not being released, exhausting all available slots on PROD-DB-01.',
+    'PostgreSQL Connection Pool — PROD-DB-01',
+    '[
+        "Run SELECT count(*) FROM pg_stat_activity; to confirm connection count",
+        "Identify idle connections: SELECT pid, usename, state, query_start FROM pg_stat_activity WHERE state = ''idle'' ORDER BY query_start;",
+        "Terminate idle connections older than 10 minutes: SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE state = ''idle'' AND query_start < NOW() - INTERVAL ''10 minutes'';",
+        "Check current max_connections: SHOW max_connections;",
+        "Review connection pool settings in application config (pool_size, max_overflow, pool_timeout)",
+        "Restart the application connection pool if idle connections persist",
+        "Increase max_connections in postgresql.conf if workload justifies it (requires DB restart)",
+        "Configure pg_bouncer as a connection pooler to prevent future recurrence",
+        "Monitor pg_stat_activity after recovery to confirm connections stabilize",
+        "Set up alert: notify if connection count exceeds 80% of max_connections"
+    ]'::jsonb,
+    'HIGH', 'DBA Team', 'PostgreSQL — PROD-DB-01'
+);
+
+-- RCA 2 — Slow DB Queries
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Missing Database Index Causing Query Timeout',
+    'Database', 'P2',
+    'slow query, database timeout, missing index, full table scan, query performance, reporting timeout',
+    'Specific queries timing out. Full table scans visible in EXPLAIN output. Reporting module slow. Database CPU elevated but connections not exhausted.',
+    'Missing index on date-range and foreign key columns caused full table scans on a large table (10M+ rows). A recent schema migration added new filter columns without corresponding indexes.',
+    'PostgreSQL Query Execution Engine — reports table',
+    '[
+        "Identify slow queries: SELECT query, calls, total_time, mean_time FROM pg_stat_statements ORDER BY mean_time DESC LIMIT 20;",
+        "Run EXPLAIN ANALYZE on the slowest query to confirm full table scan",
+        "Identify missing indexes: check for Seq Scan on large tables in EXPLAIN output",
+        "Create the missing index: CREATE INDEX CONCURRENTLY idx_reports_date ON reports(created_at, status);",
+        "CONCURRENTLY flag ensures no table lock during index creation on production",
+        "Verify index is being used: run EXPLAIN ANALYZE again and confirm Index Scan appears",
+        "Run ANALYZE on the table to update query planner statistics",
+        "Review and update the schema migration process to include index creation for new filter columns",
+        "Set pg_stat_statements.track = all in postgresql.conf for future query monitoring",
+        "Add slow query logging: log_min_duration_statement = 1000 (1 second threshold)"
+    ]'::jsonb,
+    'HIGH', 'DBA Team', 'PostgreSQL — reports table'
+);
+
+-- RCA 3 — High CPU
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Runaway Process Causing CPU Saturation After Deployment',
+    'Performance', 'P2',
+    'high cpu, cpu 100%, java process, runaway process, cpu spike after deployment, load average high',
+    'CPU above 95% sustained. Load average critically high. Java process consuming all cores. Request timeouts. Issue started after recent deployment.',
+    'A newly deployed code change introduced an infinite retry loop in the payment processing service. When a downstream API returned a 429 rate-limit error, the retry logic had no backoff or max-retry limit, causing the thread to spin continuously and consume 100% of one CPU core per affected request.',
+    'Payment Processing Service — APP-01 (Java Application)',
+    '[
+        "Run top or htop to identify the PID consuming highest CPU",
+        "For Java: run jstack <PID> to capture thread dump and identify the spinning thread",
+        "Examine thread dump for threads in RUNNABLE state with recursive or loop patterns",
+        "Check application logs for repeated error patterns (e.g. rate limit errors, retry logs)",
+        "Identify the deployment that introduced the regression using git log --since=''2 hours ago''",
+        "Kill the offending process only if system is completely unresponsive: kill -9 <PID>",
+        "Initiate rollback of the most recent deployment",
+        "After rollback, verify CPU returns to baseline (should drop within 2-3 minutes)",
+        "Fix the retry logic: add exponential backoff with jitter and a max retry count (e.g. 3 retries)",
+        "Add circuit breaker pattern to prevent retry storms against downstream services",
+        "Deploy the fix through staging with load testing before re-deploying to production"
+    ]'::jsonb,
+    'HIGH', 'SRE Team', 'APP-01 — Payment Processing Service'
+);
+
+-- RCA 4 — Disk Full
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Log Accumulation and Docker Image Buildup Causing Disk Exhaustion',
+    'Storage', 'P1',
+    'disk full, no space left on device, write failed, disk 100%, logs accumulation, docker images, /var partition',
+    'Disk at 100%. Write failures across all services. Logging service crashed. Old rotated log files consuming most space. Docker images not pruned.',
+    'Two compounding issues caused disk exhaustion: (1) Log rotation was misconfigured — logrotate was configured to keep 365 daily copies but the application generates 2GB of logs per day. (2) Docker image cleanup had never been configured — 47 dangling images accumulated over 3 months totalling 180GB. Combined, they consumed all available space on the /var partition.',
+    '/var partition — FS-01 File Server',
+    '[
+        "Confirm disk usage: df -h and identify the full partition",
+        "Find largest directories: du -sh /var/* | sort -rh | head -20",
+        "List oversized log files: find /var/log -name ''*.log'' -size +1G",
+        "Safe immediate relief: truncate (do not delete) active log files: > /var/log/app/application.log",
+        "Delete old rotated logs (gzip files older than 30 days): find /var/log -name ''*.gz'' -mtime +30 -delete",
+        "Prune Docker: docker system prune -a --volumes (removes all unused images, containers, volumes)",
+        "Verify space recovered: df -h",
+        "Restart any services that crashed due to write failures",
+        "Fix logrotate config: set rotate 7 (keep 7 days max) and compress + delaycompress",
+        "Add Docker cleanup cron: echo ''0 2 * * 0 docker system prune -f'' | crontab -",
+        "Set up disk usage alert at 80% threshold to prevent recurrence"
+    ]'::jsonb,
+    'HIGH', 'Infra Team', 'FS-01 — /var partition'
+);
+
+-- RCA 5 — Kubernetes Deployment Failure
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Missing Environment Variable in ConfigMap Causing CrashLoopBackOff',
+    'Deployment', 'P2',
+    'kubernetes deployment failed, crashloopbackoff, pod crash, missing environment variable, configmap, pod not starting',
+    'Pods in CrashLoopBackOff after deployment. Application cannot start. Logs show missing required environment variable. Health check failing. Service completely down.',
+    'The deployment ConfigMap was not updated to include the DATABASE_URL environment variable required by the new application version. The variable was added to the application code in this release but the corresponding Kubernetes ConfigMap was not updated in the deployment pipeline. The pod starts, fails to read the required variable, and crashes immediately.',
+    'Kubernetes ConfigMap — K8S-PROD cluster',
+    '[
+        "Check pod status: kubectl get pods -n production",
+        "Read crash logs: kubectl logs <pod-name> -n production --previous",
+        "Confirm missing variable in logs (look for KeyError, missing env var, or startup exception)",
+        "Check current ConfigMap: kubectl describe configmap app-config -n production",
+        "Check what env vars the new image expects: kubectl exec -it <running-pod> -- env (if any pod is up)",
+        "Add the missing variable to ConfigMap: kubectl edit configmap app-config -n production",
+        "Alternatively patch it: kubectl patch configmap app-config -n production --patch ''{\"data\":{\"DATABASE_URL\":\"<value>\"}}'",
+        "Restart the deployment to pick up new ConfigMap: kubectl rollout restart deployment/app -n production",
+        "Watch rollout: kubectl rollout status deployment/app -n production",
+        "Verify pods are Running: kubectl get pods -n production",
+        "Update the deployment pipeline to validate all required env vars are present in ConfigMap before deploy",
+        "Add a pre-deployment check script that diffs expected env vars against current ConfigMap"
+    ]'::jsonb,
+    'HIGH', 'DevOps Team', 'K8S-PROD — app deployment'
+);
+
+-- RCA 6 — Memory Leak
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Cache Without Eviction Policy Causing Gradual Memory Leak and OOM Kills',
+    'Performance', 'P1',
+    'memory leak, oom kill, high memory, ram full, pod restart, memory growing, cache not evicting, OOM',
+    'Memory usage continuously increasing after each restart. Pod OOM killed every 8-12 hours. Garbage collection not releasing memory. Cache component introduced recently.',
+    'The in-memory cache introduced in the last sprint used a plain HashMap with no eviction policy, TTL, or max-size limit. Every API request added entries to the cache but nothing was ever removed. Over 8-10 hours the cache grew to consume the full 1GB memory limit, triggering Kubernetes OOM termination. The cycle repeated on each restart.',
+    'ECOM-APP Pod — In-Memory Cache Component',
+    '[
+        "Confirm memory growth pattern: kubectl top pod <pod-name> -n production (watch over 10 minutes)",
+        "Check OOM kill history: kubectl describe pod <pod-name> -n production (look for OOMKilled in Last State)",
+        "Take a heap dump for analysis: kubectl exec -it <pod-name> -- jmap -dump:format=b,file=/tmp/heap.hprof 1",
+        "Copy heap dump out: kubectl cp <pod-name>:/tmp/heap.hprof ./heap.hprof -n production",
+        "Analyse heap dump with Eclipse MAT or VisualVM — identify the largest retained object (the HashMap)",
+        "Immediate fix: restart the pod to buy time while fix is prepared: kubectl rollout restart deployment/ecom-app",
+        "Code fix: replace HashMap with Caffeine cache with eviction policy: maximumSize(10000).expireAfterWrite(30, TimeUnit.MINUTES)",
+        "Add cache size monitoring: expose cache.size() as a Prometheus metric",
+        "Set Kubernetes memory request and limit appropriately (request: 256Mi, limit: 1Gi)",
+        "Add horizontal pod autoscaling as a safety net for traffic spikes",
+        "Deploy fix to staging, run 24-hour soak test monitoring memory growth before production deploy"
+    ]'::jsonb,
+    'HIGH', 'Platform Engineering Team', 'ECOM-APP Pod — Kubernetes'
+);
+
+-- RCA 7 — API Service Down
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Thread Pool Exhaustion from Slow Database Queries Causing API 503',
+    'Application', 'P1',
+    'api down, 503 error, service unavailable, thread pool exhausted, slow database, backend not responding, health check failing',
+    'API returning 503 on all endpoints including health check. Load balancer marking all instances unhealthy. Worker threads exhausted. Slow database queries blocking thread pool.',
+    'Long-running database queries (avg 45 seconds due to a missing index on the orders table) held worker threads for extended periods. With a thread pool size of 50 and 50+ concurrent users hitting the slow endpoint, all threads were blocked waiting for DB responses. No new requests could be accepted. The health check endpoint also runs synchronously and was blocked, causing the load balancer to mark the instance unhealthy.',
+    'API-PROD-01 — Application Thread Pool',
+    '[
+        "Confirm thread pool exhaustion: check application logs for ''thread pool full'', ''no available thread'', or queue depth metrics",
+        "Check which endpoint is slow: review access logs for longest-duration requests",
+        "Immediate relief: restart the application service to release blocked threads: systemctl restart app-service",
+        "After restart, verify health check responds: curl http://localhost:8080/health",
+        "Identify the slow query causing thread starvation: check pg_stat_activity for long-running queries",
+        "Add the missing database index: CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders(user_id, created_at);",
+        "Set a query timeout at the application level to prevent individual queries from blocking threads indefinitely",
+        "Increase thread pool size as a short-term measure: set pool_size=100 in application config",
+        "Make the health check endpoint async or bypass the database to prevent cascading failures",
+        "Add circuit breaker around database calls so the API degrades gracefully instead of fully failing",
+        "Set up monitoring: alert if 95th percentile response time exceeds 5 seconds"
+    ]'::jsonb,
+    'HIGH', 'Application Support Team', 'API-PROD-01'
+);
+
+-- RCA 8 — WiFi Down
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Access Point Not Broadcasting SSID After Power Interruption',
+    'Network', 'P2',
+    'wifi down, ssid not visible, wifi not broadcasting, dhcp not responding, office wifi, access point, wireless',
+    'All office WiFi unavailable. Access point powered on but not broadcasting SSID. Devices getting APIPA addresses. All employees affected.',
+    'A brief power fluctuation during office hours caused the main access point (AP-FLOOR2) to reboot. The access point firmware has a known bug where it fails to resume broadcasting the SSID after an unclean shutdown. The unit remains powered on and pingable on its management IP but the radio is in a silent state.',
+    'Office WiFi Access Point — WIFI-01 (AP-FLOOR2)',
+    '[
+        "Verify the access point is powered on: ping the AP management IP (check network documentation for IP)",
+        "SSH into the AP management interface: ssh admin@<ap-management-ip>",
+        "Check radio status: show interfaces dot11radio 0",
+        "If radio shows administratively down: interface dot11radio 0 → no shutdown",
+        "If radio shows up but SSID not broadcasting: reload the AP: reload",
+        "If SSH is not accessible, perform physical power cycle: unplug PoE cable for 30 seconds, reconnect",
+        "After power cycle, wait 90 seconds for AP to fully boot before testing",
+        "Verify SSID is visible on a test device",
+        "Verify DHCP is assigning IPs correctly: connect a device and confirm it gets a valid corporate IP",
+        "Test internet connectivity from a reconnected device",
+        "Document the firmware bug and raise a firmware upgrade request with the vendor",
+        "Install a UPS (Uninterruptible Power Supply) on the network rack to prevent future power-related reboots"
+    ]'::jsonb,
+    'MEDIUM', 'Network Support Team', 'Office WiFi — AP-FLOOR2'
+);
+
+-- RCA 9 — SSL Certificate Expired
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'TLS Certificate Expiry Causing HTTPS Connection Failures',
+    'Application', 'P2',
+    'ssl certificate expired, https not working, tls error, ssl handshake failed, certificate expired, https connection refused',
+    'All HTTPS connections failing with SSL handshake error. HTTP works. API and backend are healthy. Certificate expired.',
+    'The TLS certificate for api.company.com expired at midnight. The certificate renewal process was manual and the renewal reminder email was missed. No automated certificate monitoring or auto-renewal (e.g. cert-manager or Let''s Encrypt) was configured.',
+    'API Gateway — TLS Certificate',
+    '[
+        "Confirm certificate expiry: echo | openssl s_client -connect api.company.com:443 2>/dev/null | openssl x509 -noout -dates",
+        "Check certificate details: openssl x509 -in /etc/ssl/certs/api.crt -noout -text",
+        "Obtain a new certificate from the CA (Let''s Encrypt, DigiCert, etc.)",
+        "For Let''s Encrypt: certbot renew --force-renewal",
+        "For manual CA: generate CSR and submit to CA, await new certificate",
+        "Install the new certificate: copy cert and private key to /etc/ssl/certs/ and /etc/ssl/private/",
+        "Update Nginx/Apache config to point to new certificate files",
+        "Reload the web server (do not restart — reload is zero-downtime): nginx -s reload or systemctl reload nginx",
+        "Verify new certificate: echo | openssl s_client -connect api.company.com:443 2>/dev/null | openssl x509 -noout -dates",
+        "Test HTTPS from external network: curl -I https://api.company.com/health",
+        "Implement automated certificate renewal: configure cert-manager in Kubernetes or certbot cron job",
+        "Set up certificate expiry monitoring: alert 30 days before expiry"
+    ]'::jsonb,
+    'HIGH', 'Infrastructure Team', 'API Gateway — TLS Certificate'
+);
+
+-- RCA 10 — DNS Resolution Failure
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Internal DNS Server Unreachable Causing Service Discovery Failure',
+    'Network', 'P2',
+    'dns not resolving, internal dns down, hostname not resolving, dns server unreachable, service discovery, internal services unavailable',
+    'External internet works. Internal services unreachable by hostname. DNS queries to internal DNS server timing out. Ping by IP works. DNS server IP not responding.',
+    'The internal DNS server (10.0.0.53) became unreachable after a routine firewall rule update accidentally blocked UDP port 53 traffic from the corporate network segment to the DNS server subnet. The rule was intended to block external DNS queries but was applied to the wrong interface, blocking internal DNS resolution for all corporate clients.',
+    'Internal DNS Server — 10.0.0.53',
+    '[
+        "Confirm DNS is the issue: nslookup internal-service.company.local 10.0.0.53 (if timeout, DNS server unreachable)",
+        "Confirm IP connectivity works: ping 10.0.0.53 (if ping works but DNS does not, it is a port/firewall issue)",
+        "Test DNS over TCP: nslookup -vc internal-service.company.local 10.0.0.53",
+        "Check firewall rules for UDP/TCP port 53: review recent firewall changes in the audit log",
+        "Identify the incorrect firewall rule that blocks port 53 to 10.0.0.53",
+        "Roll back or correct the firewall rule to allow UDP and TCP port 53 from corporate subnet to DNS server",
+        "Verify DNS resolution immediately after firewall fix: nslookup internal-service.company.local",
+        "Test service access from an affected client machine",
+        "As immediate workaround (if firewall fix takes time): configure clients to use secondary DNS server",
+        "Review all other firewall rules changed in the same update for similar issues",
+        "Implement firewall change approval process with mandatory DNS resolution testing after each update",
+        "Add DNS resolution monitoring: alert if resolution latency exceeds 500ms or success rate drops below 99%"
+    ]'::jsonb,
+    'HIGH', 'Network Team', 'Internal DNS — 10.0.0.53'
+);
+
+-- RCA 11 — Microsoft Auth Failure
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'Azure AD Token Cache Corruption Causing Microsoft 365 Auth Failures',
+    'Application', 'P2',
+    'microsoft authentication failed, azure ad, office365, teams login, outlook login, token expired, aad auth error, sso broken',
+    'Users unable to log in to Microsoft services. Authentication failed errors. Invalid token messages. Repeated login prompts that never succeed.',
+    'The Azure AD token cache on the authentication proxy server became corrupted after an unexpected server restart during a token refresh cycle. Cached tokens are in an invalid state — they pass local validation but are rejected by Azure AD with an AADSTS70011 invalid_scope error. Clearing the token cache forces fresh authentication against Azure AD.',
+    'Azure AD Token Cache — Authentication Proxy',
+    '[
+        "Confirm the error code: check application logs for AADSTS error codes (AADSTS70011, AADSTS50126, etc.)",
+        "Verify Azure AD service health: check https://status.azure.com for active incidents",
+        "If Azure AD is healthy, the issue is local — check authentication proxy logs",
+        "Clear the local token cache on the authentication proxy server",
+        "For ADFS: Restart-Service adfssrv on the ADFS server",
+        "For Azure AD Connect: run Start-ADSyncSyncCycle -PolicyType Delta",
+        "Ask an affected user to clear their browser cache and cookies, then attempt login",
+        "If using MSAL: clear MSAL token cache by deleting files in %LocalAppData%\\Microsoft\\Identity",
+        "Verify the application''s client secret or certificate has not expired in Azure AD app registration",
+        "Test authentication with a fresh user account to isolate whether issue is account-specific or global",
+        "Configure token cache with persistence and corruption detection to prevent recurrence",
+        "Set up Azure AD health alerts via Azure Monitor"
+    ]'::jsonb,
+    'MEDIUM', 'Identity & Access Management Team', 'Azure AD / Office365'
+);
+
+-- RCA 12 — Email Notification Delay
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'SMTP Queue Backup Due to Rate Limiting Causing Email Delivery Delays',
+    'Application', 'P3',
+    'email delay, notification lag, smtp queue, mail delivery slow, emails not arriving, batch email delivery, notification delay',
+    'Emails triggered but delivered late. Users report delayed notifications. Emails arriving in batches instead of real-time.',
+    'The notification service exceeded the SMTP relay provider''s rate limit of 100 emails/minute. A bulk notification job (weekly digest) was scheduled to run at the same time as real-time transactional emails during peak hours. The relay queued excess emails and delivered them in batches as the rate limit window reset, causing delays of 15-45 minutes.',
+    'SMTP Relay — Notification Service Queue',
+    '[
+        "Check SMTP relay dashboard for queue depth and rate limit errors",
+        "Check notification service logs for 429 (rate limit) responses from SMTP relay",
+        "Identify the bulk job that caused the queue backup: check scheduled job logs",
+        "Immediately reschedule bulk notification jobs to off-peak hours (e.g. 2:00 AM)",
+        "Check current queue depth: if many queued emails, the delay will self-resolve as rate limit resets",
+        "If urgent emails are stuck, use SMTP relay admin panel to prioritize or re-inject specific emails",
+        "Implement email priority queues: critical transactional emails use a dedicated high-priority queue",
+        "Configure the notification service to separate bulk and transactional email sending paths",
+        "Set up SMTP rate limit monitoring: alert when sending rate approaches 80% of limit",
+        "Consider using a dedicated transactional email provider (SendGrid, Mailgun) for critical notifications",
+        "Add exponential backoff and retry logic to handle temporary rate limiting gracefully"
+    ]'::jsonb,
+    'MEDIUM', 'Messaging Team', 'SMTP Server / Notification Service'
+);
+
+-- RCA 13 — Laptop/Hardware Display Issue
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'GPU Driver Conflict Causing Display Artifacts and Screen Flickering',
+    'Hardware', 'P3',
+    'screen flickering, display issue, gpu driver, graphics card, laptop display, visual artifacts, monitor glitch',
+    'Screen flickering, visual artifacts, display corruption. Issue appeared after Windows/driver update. Affects specific applications.',
+    'A Windows Update pushed a new GPU driver version that is incompatible with the laptop''s hybrid graphics configuration (Intel integrated + NVIDIA discrete). The driver conflict causes the display to flicker when switching between the integrated and discrete GPU, which happens automatically when launching GPU-intensive applications.',
+    'Laptop GPU Driver — Hybrid Graphics Subsystem',
+    '[
+        "Identify driver version: Device Manager → Display Adapters → right-click GPU → Properties → Driver tab",
+        "Check Windows Update history for recent driver updates that correlate with the issue onset",
+        "Roll back the GPU driver: Device Manager → Display Adapters → right-click GPU → Update Driver → Roll Back Driver",
+        "If rollback is not available, uninstall current driver using DDU (Display Driver Uninstaller) in Safe Mode",
+        "Download the previous stable driver version from manufacturer website (Intel/NVIDIA)",
+        "Install the stable driver manually",
+        "If the issue is in a specific application: right-click app → Properties → Compatibility → Change high DPI settings → Override DPI scaling to System",
+        "Update the BIOS/UEFI firmware — some hybrid graphics bugs are fixed in firmware updates",
+        "As workaround: disable discrete GPU and use integrated GPU only (Device Manager → Disable NVIDIA)",
+        "Pause Windows Update GPU driver auto-install: go to Device Installation Settings → No",
+        "Report to IT hardware team for tracking if multiple devices are affected by the same driver update"
+    ]'::jsonb,
+    'MEDIUM', 'Hardware Support Team', 'Laptop — Hybrid GPU System'
+);
+
+-- RCA 14 — VPN / Network Access
+INSERT INTO rca_knowledge_base (
+    title, category, severity, keywords, symptoms,
+    root_cause, affected_component, resolution_steps, confidence,
+    owner, ci_asset
+) VALUES (
+    'VPN Split Tunnel Misconfiguration Blocking Internal Resource Access',
+    'Network', 'P3',
+    'vpn not working, cannot access internal systems, vpn connected but no access, split tunnel, remote access, vpn configuration',
+    'VPN shows connected. External internet works. Cannot reach internal services. Ping to internal IPs fails while connected to VPN.',
+    'A VPN configuration update pushed by IT changed the split tunneling policy. Internal IP ranges (10.0.0.0/8) were accidentally removed from the split tunnel include list. Clients connect successfully but internal traffic is being routed out through the internet interface instead of the VPN tunnel, making internal services unreachable.',
+    'VPN Client — Split Tunnel Routing Table',
+    '[
+        "Confirm VPN connection status on affected client: VPN client shows Connected",
+        "While connected to VPN, run: route print (Windows) or netstat -rn (Mac/Linux)",
+        "Look for 10.0.0.0/8 in routing table — it should point to the VPN interface (tun0 or similar), not default gateway",
+        "If 10.0.0.0/8 is missing from VPN routes, it confirms split tunnel misconfiguration",
+        "Check the VPN server-side configuration for the split tunnel include routes",
+        "Re-add the internal IP ranges to the split tunnel policy: 10.0.0.0/8, 192.168.0.0/16",
+        "Push the updated VPN policy to clients (may require client to disconnect and reconnect)",
+        "Ask affected user to disconnect and reconnect VPN",
+        "Verify routing table again: 10.0.0.0/8 should now route through VPN tunnel",
+        "Test internal resource access: ping 10.0.0.1 and access an internal web service",
+        "Add a VPN configuration validation test to the change management process for future VPN updates",
+        "Document the correct split tunnel routes in IT runbook for quick reference"
+    ]'::jsonb,
+    'MEDIUM', 'Network Operations Team', 'VPN Infrastructure'
+);
+
+
+-- ============================================================
+-- 6. DISABLE ROW LEVEL SECURITY (same as tickets table)
+-- ============================================================
+ALTER TABLE rca_knowledge_base DISABLE ROW LEVEL SECURITY;
+
+
+-- ============================================================
+-- 7. VERIFY
+-- ============================================================
+SELECT id, title, category, severity, confidence
+FROM rca_knowledge_base
+ORDER BY id;
+-- You should see 14 rows.

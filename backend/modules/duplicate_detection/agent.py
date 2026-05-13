@@ -1,8 +1,8 @@
 import re
 import asyncio
 
-from services.llm_service import call_llm
-from core.constants import SIMILARITY_THRESHOLD  
+from backend.services.llm_service import call_llm
+from backend.core.constants import SIMILARITY_THRESHOLD
 from .prompt import DUPLICATE_PROMPT, RELATED_PROMPT
 
 

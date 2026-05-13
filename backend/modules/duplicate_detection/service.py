@@ -1,5 +1,5 @@
 import re
-from services.llm_service import call_llm
+from backend.services.llm_service import call_llm
 from .prompt import DUPLICATE_PROMPT, RELATED_PROMPT
 
 
